@@ -1,8 +1,8 @@
 {
   "id": "1e9a0e9f-1b2a-4b5e-8c4a-5a6b7c8d9e0f",
   "revision": 0,
-  "last_node_id": 5,
-  "last_link_id": 4,
+  "last_node_id": 6,
+  "last_link_id": 6,
   "nodes": [
     {
       "id": 1,
@@ -156,6 +156,68 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": []
+    },
+    {
+      "id": 5,
+      "type": "SaveImage",
+      "pos": [
+        1220,
+        1060
+      ],
+      "size": [
+        315,
+        114
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.45",
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "MoGe2Pano_Depth"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "SaveImage",
+      "pos": [
+        1540,
+        1060
+      ],
+      "size": [
+        315,
+        114
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.45",
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "MoGe2Pano_Normal"
+      ]
     }
   ],
   "links": [
@@ -182,6 +244,22 @@
       4,
       0,
       "IMAGE"
+    ],
+    [
+      5,
+      2,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      2,
+      1,
+      6,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [],
@@ -198,4 +276,3 @@
   },
   "version": 0.4
 }
-
