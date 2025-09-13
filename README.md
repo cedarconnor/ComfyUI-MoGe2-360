@@ -32,6 +32,27 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
 1. Clone this repo to `ComfyUI/custom_nodes` 
 2. Install requirements: `pip install -r requirements.txt`
 
+### Panorama Mode (Metric)
+
+- Use the new `MoGe2Panorama` node to process equirectangular (360°) panoramas with metric-scale preservation.
+- Requirements:
+  - A local copy of the MoGe-2 v2 checkpoint folder. Set `model_path` to that local path (e.g., `C:/models/Ruicheng/moge-2-vitl-normal`). No network download is attempted.
+  - Input must be an equirectangular panorama. Output resolution matches the input.
+- Parameters:
+  - `model_path`: local path to the model folder.
+  - `face_resolution`: icosahedron per-view resolution (e.g., 512).
+  - `resolution_level`: model resolution/tokens (Low/Medium/High/Ultra).
+  - `merge_method`: z_buffer (metric-preserving) merge.
+  - `output_pcl`: exports merged point cloud as `.ply` with input colors.
+  - `filename_prefix`: output path/prefix for exports.
+- Outputs:
+  - `depth`: panorama depth visualization (closer is brighter in the preview).
+  - `normal`: panorama normal visualization (merged and rotated to world).
+  - `pcl_path`: saved point cloud path (string).
+
+Example workflow: `example_workflows/MoGe2Panorama.json`
+
+
 ## Model Support
 
 - [x] [Ruicheng/moge-2-vitl-normal](https://huggingface.co/Ruicheng/moge-2-vitl-normal/tree/main)
