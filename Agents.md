@@ -115,24 +115,28 @@ Here’s a task breakdown that Codex / agent might perform in order:
 
 ## Implementation Notes (Planned in this repo)
 
-- Single Node MVP: Implement a new `MoGe2Panorama` node that takes an equirectangular panorama and outputs panorama depth (visualized), panorama normals (visualized), and an optional exported point cloud path.
+- Single Node MVP: Implement a new `MoGe2Panorama` node that takes an equirectangular panorama and outputs panorama depth (visualized), panorama normals (visualized), and optional exports for point cloud (PLY) and textured mesh (GLB).
 - Split Strategy: Use existing icosahedron-based virtual cameras from `moge/utils/panorama.py#get_panorama_cameras` with 90° FOV and zero translation (all virtual cameras at panorama center). Output panorama resolution matches the input panorama resolution.
-- Per-View Inference: For each split view, run `MoGe-2` (v2) `infer` with `fov_x=90`, `force_projection=True`, and `apply_mask=True`. Use an explicit local `model_path` for loading to avoid network pulls. Views with empty valid masks are skipped.
+- Per-View Inference: For each split view, run `MoGe-2` (v2) `infer` with `fov_x=90`, `force_projection=True`, and `apply_mask=True`. The node supports a `model` dropdown (v1/v2) with a local default mapping and an optional `model_path` override; it loads weights locally only (no network). If the resolved path is missing, it raises a clear error. Views with empty valid masks are skipped.
 - Metric-Preserving Merge (Z-Buffer):
   - For each panorama pixel, compute the ray direction in world coordinates via `spherical_uv_to_directions`.
   - For each view, project that direction to the view image to sample the predicted per-view point map (in camera frame) and mask.
   - Rotate sampled camera-space points and normals into world-space using the view rotation (from extrinsics), then compute radial distance `t = ||P_world||`.
   - Across views, pick the valid contribution with the smallest `t` (z-buffer) per panorama pixel. Do not apply log-distance blending, affine normalization, or gradient Poisson solves in this path to preserve metric scale.
 - Normals: Merge normals by selecting the same winning view per pixel, after rotating normals to world space. Visualize with the existing `colorize_normal` utility.
-- Point Cloud Export: Optionally export a world-space point cloud (PLY) sampled from the merged panorama with colors taken from the input panorama. The export will be saved using ComfyUI’s `folder_paths` with a configurable `filename_prefix`.
-- Parameters (initial):
-  - `model_path` (string, required, local): explicit local checkpoint/repo path for MoGe-2 (v2) to avoid network.
+- Exports: Optionally export a world-space point cloud (PLY) and a textured mesh (GLB) built over the panorama grid. Exports use ComfyUI's `folder_paths` with a configurable `filename_prefix`.
+- Parameters:
+  - `model` (enum: v1/v2, default v2): select MoGe version (panorama prefers v2 for metric scale and normals).
+  - `model_path` (string, optional, local): local checkpoint path that overrides the version mapping when present.
   - `face_resolution` (int, default 512): resolution of each virtual view (icosahedron faces).
   - `resolution_level` (enum): forwarded to the model to control token count.
   - `merge_method` (enum): default `z_buffer` (metric preserving). Optionally expose `poisson` later.
+  - `apply_mask` (bool): apply model’s validity mask.
   - `output_pcl` (bool): whether to write out a PLY point cloud.
+  - `output_glb` (bool): whether to write out a textured GLB mesh.
   - `filename_prefix` (string): export prefix/path.
-- Outputs: panorama depth visualization (IMAGE), panorama normal visualization (IMAGE), and point cloud path (STRING).
+  - `use_fp16` (bool): enable FP16 inference for speed/VRAM.
+- Outputs: panorama depth visualization (IMAGE), panorama normal visualization (IMAGE), point cloud path (STRING, .ply), and GLB path (STRING, .glb).
 - Future Work: Add alternative split strategies (cube faces), expose pano intrinsics, and add advanced seam blending that respects metric scale (e.g., confidence-weighted z-buffer) if needed.
 
 ---

@@ -206,20 +206,22 @@ class MoGe2Panorama:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_path": ("STRING", {"default": "C:/models/Ruicheng/moge-2-vitl-normal"}),
-                "image": ("IMAGE",),
-                "face_resolution": ("INT", {"default": 512, "min": 128, "max": 1536, "step": 64}),
-                "resolution_level": (["Low", "Medium", "High", "Ultra"], {"default": "High"}),
-                "merge_method": (["z_buffer"], {"default": "z_buffer"}),
-                "apply_mask": ("BOOLEAN", {"default": True}),
-                "output_pcl": ("BOOLEAN", {"default": True}),
-                "filename_prefix": ("STRING", {"default": "3D/MoGe_Pano"}),
-                "use_fp16": ("BOOLEAN", {"default": True}),
+                "model": (["v1", "v2"], {"default": "v2", "tooltip": "Select MoGe version. Panorama prefers v2 for metric scale and normals."}),
+                "model_path": ("STRING", {"default": "C:/models/Ruicheng/moge-2-vitl-normal", "tooltip": "Optional local checkpoint path. If set and exists, overrides the version mapping. No network used."}),
+                "image": ("IMAGE", {"tooltip": "Input equirectangular panorama (H×W×3) as a ComfyUI IMAGE tensor."}),
+                "face_resolution": ("INT", {"default": 512, "min": 128, "max": 1536, "step": 64, "tooltip": "Resolution per virtual view used to split the panorama."}),
+                "resolution_level": (["Low", "Medium", "High", "Ultra"], {"default": "High", "tooltip": "Model internal token resolution. Higher = better quality, slower."}),
+                "merge_method": (["z_buffer"], {"default": "z_buffer", "tooltip": "Merge strategy. z_buffer picks the nearest metric distance per panorama ray."}),
+                "apply_mask": ("BOOLEAN", {"default": True, "tooltip": "Apply model’s validity mask to ignore unreliable predictions."}),
+                "output_pcl": ("BOOLEAN", {"default": True, "tooltip": "Export merged world-space point cloud (.ply)."}),
+                "output_glb": ("BOOLEAN", {"default": False, "tooltip": "Export textured mesh (.glb) built over the panorama grid."}),
+                "filename_prefix": ("STRING", {"default": "3D/MoGe_Pano", "tooltip": "Prefix under the ComfyUI output directory for saved files."}),
+                "use_fp16": ("BOOLEAN", {"default": True, "tooltip": "Use FP16 inference to reduce VRAM and improve speed."}),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING")
-    RETURN_NAMES = ("depth", "normal", "pcl_path")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("depth", "normal", "pcl_path", "glb_path")
     FUNCTION = "process"
     CATEGORY = "MoGe2"
     OUTPUT_NODE = True
@@ -262,6 +264,7 @@ class MoGe2Panorama:
         return cv2.remap(arr, mapx, mapy, interpolation=interpolation, borderMode=borderMode)
 
     def process(self,
+                model: str,
                 model_path: str,
                 image,
                 face_resolution: int,
@@ -269,14 +272,25 @@ class MoGe2Panorama:
                 merge_method: str,
                 apply_mask: bool,
                 output_pcl: bool,
+                output_glb: bool,
                 filename_prefix: str,
-                use_fp16: bool) -> Tuple[torch.Tensor, torch.Tensor, str]:
+                use_fp16: bool) -> Tuple[torch.Tensor, torch.Tensor, str, str]:
+
+        # Resolve model path from version unless an override path is provided
+        version_to_default_local = {
+            "v1": "C:/models/Ruicheng/moge-vitl",
+            "v2": "C:/models/Ruicheng/moge-2-vitl-normal",
+        }
+        model_version = model
+        if isinstance(model_path, str) and len(model_path.strip()) > 0 and Path(model_path).exists():
+            resolved_path = model_path
+        else:
+            resolved_path = version_to_default_local.get(model_version)
+        if resolved_path is None or not Path(resolved_path).exists():
+            raise FileNotFoundError(f"Could not find local weights for {model_version}. Checked: {resolved_path or '(none)'} and override '{model_path}'.")
 
         # Load model locally (no network)
-        model_version = "v2"
-        if not Path(model_path).exists():
-            raise FileNotFoundError(f"model_path does not exist: {model_path}")
-        model_instance = import_model_class_by_version(model_version).from_pretrained(model_path).cuda().eval()
+        model_instance = import_model_class_by_version(model_version).from_pretrained(resolved_path).cuda().eval()
 
         # Prepare image (equirectangular pano)
         pano = self._to_numpy_image(image)
@@ -409,6 +423,7 @@ class MoGe2Panorama:
         # Export point cloud if requested
         full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, folder_paths.get_output_directory())
         pcl_relative_path = ""
+        glb_relative_path = ""
         if output_pcl and np.any(final_mask):
             verts = best_point_world[final_mask]
             colors = pano[final_mask]
@@ -420,11 +435,70 @@ class MoGe2Panorama:
         else:
             pcl_relative_path = "Point cloud export disabled or empty mask"
 
+        # Optional GLB export (textured mesh over the pano grid)
+        if output_glb and np.any(final_mask):
+            try:
+                # Build a triangulated image mesh using the pano grid
+                uv_grid = utils3d.numpy.image_uv(width=pano_w, height=pano_h)
+                # If normals available, try to include; otherwise export without normals
+                if best_normal_world is not None and np.any(final_mask):
+                    faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.numpy.image_mesh(
+                        best_point_world,
+                        pano.astype(np.float32) / 255.0,
+                        uv_grid,
+                        best_normal_world.astype(np.float32),
+                        mask=final_mask,
+                        tri=True,
+                    )
+                else:
+                    faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
+                        best_point_world,
+                        pano.astype(np.float32) / 255.0,
+                        uv_grid,
+                        mask=final_mask,
+                        tri=True,
+                    )
+                    vertex_normals = None
+
+                # Match the single-view export orientation and UV convention
+                vertices = vertices * np.array([1, -1, -1], dtype=np.float32)
+                vertex_uvs = vertex_uvs * np.array([1, -1], dtype=np.float32) + np.array([0, 1], dtype=np.float32)
+                if vertex_normals is not None:
+                    vertex_normals = vertex_normals * np.array([1, -1, -1], dtype=np.float32)
+
+                mesh = trimesh.Trimesh(
+                    vertices=vertices,
+                    faces=faces,
+                    vertex_normals=vertex_normals,
+                    visual=trimesh.visual.texture.TextureVisuals(
+                        uv=vertex_uvs,
+                        material=trimesh.visual.material.PBRMaterial(
+                            baseColorTexture=Image.fromarray(pano),
+                            metallicFactor=0.5,
+                            roughnessFactor=1.0,
+                        ),
+                    ),
+                    process=False,
+                )
+
+                output_glb_path = Path(full_output_folder) / f"{filename}_{counter:05}_.glb"
+                output_glb_path.parent.mkdir(exist_ok=True, parents=True)
+                mesh.export(output_glb_path)
+                glb_relative_path = str(Path(subfolder) / f"{filename}_{counter:05}_.glb")
+            except Exception as e:
+                log.exception("Failed to export GLB: %s", e)
+                glb_relative_path = "GLB export failed"
+        else:
+            if output_glb:
+                glb_relative_path = "GLB export skipped: empty mask"
+            else:
+                glb_relative_path = "GLB export disabled"
+
         # Convert to tensors for ComfyUI
         depth_tensor = self._numpy_to_tensor_image(depth_vis_rgb)
         normal_tensor = self._numpy_to_tensor_image(normal_vis)
 
-        return (depth_tensor, normal_tensor, pcl_relative_path)
+        return (depth_tensor, normal_tensor, pcl_relative_path, glb_relative_path)
 
 NODE_CLASS_MAPPINGS = {
     "RunMoGe2Process": RunMoGe2Process,

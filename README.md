@@ -34,21 +34,27 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
 
 ### Panorama Mode (Metric)
 
-- Use the new `MoGe2Panorama` node to process equirectangular (360°) panoramas with metric-scale preservation.
+ - Use the `MoGe2Panorama` node to process equirectangular (360°) panoramas with metric-scale preservation and stitched normals.
 - Requirements:
-  - A local copy of the MoGe-2 v2 checkpoint folder. Set `model_path` to that local path (e.g., `C:/models/Ruicheng/moge-2-vitl-normal`). No network download is attempted.
+  - A local copy of the MoGe checkpoint folder(s). The node resolves a local path from the selected version or uses your `model_path` override. No network download is attempted.
   - Input must be an equirectangular panorama. Output resolution matches the input.
-- Parameters:
-  - `model_path`: local path to the model folder.
-  - `face_resolution`: icosahedron per-view resolution (e.g., 512).
-  - `resolution_level`: model resolution/tokens (Low/Medium/High/Ultra).
-  - `merge_method`: z_buffer (metric-preserving) merge.
-  - `output_pcl`: exports merged point cloud as `.ply` with input colors.
-  - `filename_prefix`: output path/prefix for exports.
+ - Model selection:
+  - `model` (v1/v2): Choose the MoGe version. Panorama strongly recommends `v2` for metric scale and normals.
+  - `model_path` (optional): Local override path. If set and exists, it is used instead of the version mapping. If neither exists, the node raises an error.
+- Parameters (brief):
+  - `face_resolution`: Per-view split resolution (icosahedron faces). Higher = finer coverage; more VRAM/time.
+  - `resolution_level`: Internal model token resolution (Low/Medium/High/Ultra). Higher = better, slower.
+  - `merge_method`: `z_buffer` metric-preserving merge (nearest distance wins per ray).
+  - `apply_mask`: Apply model validity mask to ignore unreliable pixels.
+  - `output_pcl`: Export merged point cloud as `.ply` with panorama colors.
+  - `output_glb`: Export textured mesh as `.glb` built over the panorama grid.
+  - `filename_prefix`: Output prefix under ComfyUI’s output directory.
+  - `use_fp16`: Use half precision to reduce VRAM and improve speed.
 - Outputs:
-  - `depth`: panorama depth visualization (closer is brighter in the preview).
-  - `normal`: panorama normal visualization (merged and rotated to world).
-  - `pcl_path`: saved point cloud path (string).
+  - `depth`: Panorama depth visualization (closer appears brighter in the preview).
+  - `normal`: Panorama normal visualization (world-space, stitched from views).
+  - `pcl_path`: Saved point cloud path (STRING, `.ply`).
+  - `glb_path`: Saved textured mesh path (STRING, `.glb`).
 
 Example workflow: `example_workflows/MoGe2Panorama.json`
 
