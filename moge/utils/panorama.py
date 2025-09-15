@@ -16,12 +16,109 @@ from scipy.sparse.linalg import lsmr
 
 import utils3d
 
+# Local minimal replacements to avoid depending on optional utils3d extras in some environments
+def _intrinsics_from_fov(fov_x: float, fov_y: float) -> np.ndarray:
+    fx = 0.5 / np.tan(fov_x / 2.0)
+    fy = 0.5 / np.tan(fov_y / 2.0)
+    K = np.array([[fx, 0.0, 0.5], [0.0, fy, 0.5], [0.0, 0.0, 1.0]], dtype=np.float32)
+    return K
 
-def get_panorama_cameras():
-    vertices, _ = utils3d.numpy.icosahedron()
-    intrinsics = utils3d.numpy.intrinsics_from_fov(fov_x=np.deg2rad(90), fov_y=np.deg2rad(90))
-    extrinsics = utils3d.numpy.extrinsics_look_at([0, 0, 0], vertices, [0, 0, 1]).astype(np.float32)
-    return extrinsics, [intrinsics] * len(vertices)
+
+def _look_at_rotation(target_dir: np.ndarray, up: np.ndarray = np.array([0, 0, 1], dtype=np.float32)) -> np.ndarray:
+    f = target_dir.astype(np.float32)
+    f = f / (np.linalg.norm(f) + 1e-9)
+    u = up.astype(np.float32)
+    # Handle near-parallel up vector
+    if abs(np.dot(f, u)) > 0.999:
+        u = np.array([0, 1, 0], dtype=np.float32)
+    x_axis = np.cross(u, f)
+    x_axis = x_axis / (np.linalg.norm(x_axis) + 1e-9)
+    y_axis = np.cross(f, x_axis)
+    y_axis = y_axis / (np.linalg.norm(y_axis) + 1e-9)
+    z_axis = f
+    R = np.stack([x_axis, y_axis, z_axis], axis=0)  # world->camera
+    return R.astype(np.float32)
+
+
+def _icosahedron_vertices() -> np.ndarray:
+    """Return 12 unit icosahedron vertices as (12,3) array."""
+    phi = (1 + 5 ** 0.5) / 2
+    verts = []
+    # (±1, ±phi, 0)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            verts.append([sx * 1.0, sy * phi, 0.0])
+    # (0, ±1, ±phi)
+    for sy in (-1, 1):
+        for sz in (-1, 1):
+            verts.append([0.0, sy * 1.0, sz * phi])
+    # (±phi, 0, ±1)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            verts.append([sx * phi, 0.0, sz * 1.0])
+    verts = np.array(verts, dtype=np.float32)
+    verts = verts / (np.linalg.norm(verts, axis=-1, keepdims=True) + 1e-9)
+    return verts
+
+
+def _image_uv(width: int, height: int, dtype=np.float32):
+    u = np.linspace(0.0, 1.0, width, dtype=dtype)
+    v = np.linspace(0.0, 1.0, height, dtype=dtype)
+    uu, vv = np.meshgrid(u, v, indexing='xy')
+    return np.stack([uu, vv], axis=-1)
+
+
+def _unproject_directions(uv: np.ndarray, extrinsic: np.ndarray, intrinsic: np.ndarray):
+    """Convert per-camera pixel UV in [0,1] to world-space unit ray directions.
+
+    extrinsic: world->camera rotation or [R|t] (only R used)
+    intrinsic: normalized intrinsics matrix
+    """
+    if extrinsic.shape[-2:] == (4, 4) or extrinsic.shape[-2:] == (3, 4):
+        R = extrinsic[:3, :3].astype(np.float32)
+    else:
+        R = extrinsic.astype(np.float32)
+    K = intrinsic.astype(np.float32)
+    fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+    x_cam = (uv[..., 0] - cx) / fx
+    y_cam = (uv[..., 1] - cy) / fy
+    z_cam = np.ones_like(x_cam, dtype=np.float32)
+    v_cam = np.stack([x_cam, y_cam, z_cam], axis=-1)
+    v_cam = v_cam / (np.linalg.norm(v_cam, axis=-1, keepdims=True) + 1e-9)
+    # Row-vector convention: v_world = v_cam @ R
+    v_world = v_cam @ R
+    v_world = v_world / (np.linalg.norm(v_world, axis=-1, keepdims=True) + 1e-9)
+    return v_world
+
+
+def _uv_to_pixel(uv: np.ndarray, width: int, height: int):
+    mapx = (uv[..., 0] * (width - 1)).astype(np.float32)
+    mapy = (uv[..., 1] * (height - 1)).astype(np.float32)
+    return np.stack([mapx, mapy], axis=-1)
+
+
+def get_panorama_cameras(fov_x_deg: float = 90.0, fov_y_deg: Optional[float] = None):
+    """Return (extrinsics, intrinsics_list) for a set of virtual cameras on a sphere.
+
+    Uses a built-in icosahedron layout and 90° FOV cameras, all centered at the panorama origin.
+    Avoids relying on optional utils3d helpers that may not be present in some distributions.
+    """
+    try:
+        # Try utils3d if available in this environment
+        vertices, _ = utils3d.numpy.icosahedron()
+        if fov_y_deg is None:
+            fov_y_deg = fov_x_deg
+        intrinsics = utils3d.numpy.intrinsics_from_fov(fov_x=np.deg2rad(fov_x_deg), fov_y=np.deg2rad(fov_y_deg))
+        extrinsics = utils3d.numpy.extrinsics_look_at([0, 0, 0], vertices, [0, 0, 1]).astype(np.float32)
+        return extrinsics, [intrinsics] * len(vertices)
+    except Exception:
+        # Fallback: local implementation
+        vertices = _icosahedron_vertices()
+        if fov_y_deg is None:
+            fov_y_deg = fov_x_deg
+        intrinsics = _intrinsics_from_fov(np.deg2rad(fov_x_deg), np.deg2rad(fov_y_deg))
+        extrinsics = np.stack([_look_at_rotation(v, up=np.array([0, 0, 1], dtype=np.float32)) for v in vertices], axis=0).astype(np.float32)
+        return extrinsics, [intrinsics] * len(vertices)
 
 
 def spherical_uv_to_directions(uv: np.ndarray):
@@ -39,13 +136,16 @@ def directions_to_spherical_uv(directions: np.ndarray):
 
 def split_panorama_image(image: np.ndarray, extrinsics: np.ndarray, intrinsics: np.ndarray, resolution: int):
     height, width = image.shape[:2]
-    uv = utils3d.numpy.image_uv(width=resolution, height=resolution)
+    uv = _image_uv(width=resolution, height=resolution)
     splitted_images = []
     for i in range(len(extrinsics)):
-        spherical_uv = directions_to_spherical_uv(utils3d.numpy.unproject_cv(uv, extrinsics=extrinsics[i], intrinsics=intrinsics[i]))
-        pixels = utils3d.numpy.uv_to_pixel(spherical_uv, width=width, height=height).astype(np.float32)
+        # Build world directions for each view pixel, then map to pano spherical UV
+        dirs_world = _unproject_directions(uv, extrinsic=extrinsics[i], intrinsic=intrinsics[i])
+        spherical_uv = directions_to_spherical_uv(dirs_world)
+        pixels = _uv_to_pixel(spherical_uv, width=width, height=height)
 
-        splitted_image = cv2.remap(image, pixels[..., 0], pixels[..., 1], interpolation=cv2.INTER_LINEAR)    
+        # Horizontal wrap is desired for equirectangular sampling
+        splitted_image = cv2.remap(image, pixels[..., 0], pixels[..., 1], interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
         splitted_images.append(splitted_image)
     return splitted_images
 

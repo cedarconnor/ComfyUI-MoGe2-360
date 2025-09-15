@@ -6,6 +6,8 @@ The goal is to extend the zade23 ComfyUI node for MoGe2 so that it can process *
 
 ---
 
+Update 2025-09-15: Implemented the panorama node with default model v2 (normals), default weighted merge for smoother seams, GLB orientation control, simple hole filling, optional per-view exports (PLY/GLB), and a synthetic validation script. Also fixed a rotation-order bug that caused per-segment misalignment.
+
 ## Background & Key Features of MoGe-2 & infer_panorama.py
 
 Taken from MoGe-2 paper, README, and code:
@@ -132,11 +134,41 @@ Here’s a task breakdown that Codex / agent might perform in order:
   - `resolution_level` (enum): forwarded to the model to control token count.
   - `merge_method` (enum): default `z_buffer` (metric preserving). Optionally expose `poisson` later.
   - `apply_mask` (bool): apply model’s validity mask.
+  - `view_fov_x_deg` (int): per-view FOV to control overlap (smoother seams with more overlap).
+  - `merge_method` (enum): `weighted` (default) or `z_buffer`.
+  - `angle_power`, `depth_alpha`: weights for `weighted` blend.
+  - `fill_holes` (bool) and `hole_iters` (int): simple neighbor-average hole filling.
+  - `horizontal_wrap` (bool): use horizontal wrap border in pano remap for edge-case debugging.
+  - `export_per_view` (bool): export each per-view prediction for debugging.
+  - `per_view_export_format` (enum): `ply`, `glb`, or `both` for per-view exports.
+  - `per_view_prefix` (string): prefix/path for per-view exports.
   - `output_pcl` (bool): whether to write out a PLY point cloud.
   - `output_glb` (bool): whether to write out a textured GLB mesh.
+  - `glb_rotate_x_deg` (int): extra rotation around X axis for GLB viewers.
   - `filename_prefix` (string): export prefix/path.
   - `use_fp16` (bool): enable FP16 inference for speed/VRAM.
 - Outputs: panorama depth visualization (IMAGE), panorama normal visualization (IMAGE), point cloud path (STRING, .ply), and GLB path (STRING, .glb).
 - Future Work: Add alternative split strategies (cube faces), expose pano intrinsics, and add advanced seam blending that respects metric scale (e.g., confidence-weighted z-buffer) if needed.
+
+---
+
+## Implemented Fix: Segment Misalignment (Rotation Order)
+
+- utils3d extrinsics follow world→camera: `x_cam = R x_world + t`.
+- Converting camera-space predictions to world for zero-translation virtual cameras requires: `x_world = R^T x_cam`.
+- With row-vector math used in this repo, this becomes `x_world_row = x_cam_row @ R`.
+- Previous code used `@ R.T`, causing per-view outputs to be rotated incorrectly and misaligned across seams.
+- nodes.py updated to use `@ R` for points and normals in the pano z-buffer merge and per-view exports.
+
+---
+
+## Validation
+
+- Added `scripts/validate_panorama.py` which simulates a unit sphere panorama, generates per-view camera-space predictions, merges using the same z-buffer world-frame logic, and reports mean absolute 3D error.
+- Expected: near-zero error and clean seams, confirming rotation handling and projection are consistent.
+
+Run:
+- `python scripts/validate_panorama.py`
+- Outputs under `outputs/validate_panorama/`: `diff_heatmap.png`, `mask.png`.
 
 ---

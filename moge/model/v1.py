@@ -211,6 +211,44 @@ class MoGeModel(nn.Module):
     def dtype(self) -> torch.dtype:
         return next(self.parameters()).dtype
 
+    # Local minimal geometry helpers to avoid hard dependency on specific utils3d torch APIs in mixed environments
+    @staticmethod
+    def _intrinsics_from_focal_center_torch(fx: torch.Tensor, fy: torch.Tensor, cx: float, cy: float) -> torch.Tensor:
+        if not torch.is_tensor(fx):
+            fx = torch.as_tensor(fx, dtype=torch.float32)
+        if not torch.is_tensor(fy):
+            fy = torch.as_tensor(fy, dtype=torch.float32)
+        if fx.ndim == 0:
+            fx = fx[None]
+        if fy.ndim == 0:
+            fy = fy[None]
+        B = fx.shape[0]
+        device = fx.device
+        dtype = fx.dtype
+        K = torch.zeros((B, 3, 3), device=device, dtype=dtype)
+        K[:, 0, 0] = fx
+        K[:, 1, 1] = fy
+        K[:, 0, 2] = torch.as_tensor(cx, device=device, dtype=dtype)
+        K[:, 1, 2] = torch.as_tensor(cy, device=device, dtype=dtype)
+        K[:, 2, 2] = 1.0
+        return K
+
+    @staticmethod
+    def _depth_to_points_torch(depth: torch.Tensor, intrinsics: torch.Tensor) -> torch.Tensor:
+        B, H, W = depth.shape
+        device, dtype = depth.device, depth.dtype
+        u = torch.linspace(0.0, 1.0, W, device=device, dtype=dtype).view(1, 1, W).expand(B, H, W)
+        v = torch.linspace(0.0, 1.0, H, device=device, dtype=dtype).view(1, H, 1).expand(B, H, W)
+        fx = intrinsics[:, 0, 0].view(B, 1, 1)
+        fy = intrinsics[:, 1, 1].view(B, 1, 1)
+        cx = intrinsics[:, 0, 2].view(B, 1, 1)
+        cy = intrinsics[:, 1, 2].view(B, 1, 1)
+        z = depth
+        x = (u - cx) / fx * z
+        y = (v - cy) / fy * z
+        pts = torch.stack([x, y, z], dim=-1)
+        return pts
+
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Union[str, Path, IO[bytes]], model_kwargs: Optional[Dict[str, Any]] = None, **hf_kwargs) -> 'MoGeModel':
         """
@@ -365,12 +403,12 @@ class MoGeModel(nn.Module):
                 _, shift = recover_focal_shift(points, mask_binary, focal=focal)
             fx = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 / aspect_ratio
             fy = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 
-            intrinsics = utils3d.torch.intrinsics_from_focal_center(fx, fy, 0.5, 0.5)
+            intrinsics = self._intrinsics_from_focal_center_torch(fx, fy, 0.5, 0.5)
             depth = points[..., 2] + shift[..., None, None]
             
             # If projection constraint is forced, recompute the point map using the actual depth map
             if force_projection:
-                points = utils3d.torch.depth_to_points(depth, intrinsics=intrinsics)
+                points = self._depth_to_points_torch(depth, intrinsics=intrinsics)
             else:
                 points = points + torch.stack([torch.zeros_like(shift), torch.zeros_like(shift), shift], dim=-1)[..., None, None, :]
 
