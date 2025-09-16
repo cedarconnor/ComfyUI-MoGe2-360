@@ -57,6 +57,27 @@ def test_nodes_api():
     """Import nodes as a proper package submodule so relative imports work."""
     import importlib.util
     import importlib
+    import types
+
+    # Stub minimal ComfyUI folder_paths for import-time references
+    if "folder_paths" not in sys.modules:
+        fp = types.ModuleType("folder_paths")
+        def _get_output_directory():
+            out = REPO_ROOT / "outputs"
+            out.mkdir(parents=True, exist_ok=True)
+            return str(out)
+        def _get_save_image_path(filename_prefix, output_dir, *args, **kwargs):
+            from pathlib import Path
+            prefix = filename_prefix if isinstance(filename_prefix, str) and filename_prefix else "ComfyUI"
+            full = Path(output_dir) / prefix
+            full.mkdir(parents=True, exist_ok=True)
+            filename = Path(prefix).name
+            counter = 0
+            subfolder = str(Path(prefix))
+            return str(full), filename, counter, subfolder, filename_prefix
+        fp.get_output_directory = _get_output_directory  # type: ignore[attr-defined]
+        fp.get_save_image_path = _get_save_image_path    # type: ignore[attr-defined]
+        sys.modules["folder_paths"] = fp
     pkg_name = "ComfyUI_MoGe2_360"
     init_file = REPO_ROOT / "__init__.py"
     assert init_file.exists(), "__init__.py missing at repo root"
