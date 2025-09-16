@@ -10,7 +10,7 @@ Huggingface demo: https://huggingface.co/spaces/Ruicheng/MoGe-2
 
 ## Updates
 
-- [2025-09-15] Panorama mode: default model `v2` with normals; default weighted merge for smoother seams; GLB extra rotation option; hole filling; per-view exports; synthetic validation script; fixed segment misalignment (rotation order).
+- [2025-09-15] Panorama mode: default model `v2` with normals; default z-buffer merge (ray distance) for strongest metric consistency; GLB extra rotation option; hole filling; per-view exports; synthetic validation script; fixed segment misalignment (rotation order).
 - [2025-07-29] Support `Ruicheng/moge-2-vitl-normal` and `Ruicheng/moge-vitl` model.
 
 ## Features
@@ -45,12 +45,21 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
 - Parameters (brief):
   - `face_resolution`: Per-view split resolution (icosahedron faces). Higher = finer coverage; more VRAM/time.
   - `resolution_level`: Internal model token resolution (Low/Medium/High/Ultra). Higher = better, slower.
-  - `view_fov_x_deg`: Virtual view FOV; increase (e.g., 100–110) for more overlap and smoother seams.
-  - `merge_method`: `weighted` (default) blends overlapping views by angle and optional depth; `z_buffer` picks nearest distance.
+  - `view_fov_x_deg`: Virtual view FOV (default 110) for more overlap and smoother seams.
+- `merge_method`: `z_buffer` (default) picks nearest distance; `weighted` blends overlapping views by angle and optional depth; `affine_depth` aligns and blends depth per slice (scale+bias) in the pano; `poisson_depth` fuses depth via gradient-domain Poisson integration.
+- `zbuffer_mode`: `ray` (default) uses distance along the panorama ray; `radial` uses ||P||.
+ - `mask_image` (optional): label/mask IMAGE at panorama resolution. Unique colors (RGB) or intensities denote labels; 0 is background by default.
+ - `multi_glb_from_mask`: if true (with `mask_image`), exports one GLB per label region.
+ - `mask_ignore_zero`: ignore label 0 when exporting per-label GLBs.
+ - `min_label_area_ratio`: minimum fraction of pixels a label must occupy to export (default 0.5%).
+ - `multi_glb_prefix`: output prefix for per-label GLBs under ComfyUI’s output directory.
   - `angle_power`: Angle weighting exponent for `weighted` merge (weight ~ cos(theta)^p).
   - `depth_alpha`: Optional depth factor for `weighted` merge (weight ~ 1 / distance^alpha).
   - `apply_mask`: Apply model validity mask to ignore unreliable pixels.
   - `horizontal_wrap`: Horizontal wrap at the pano seam (useful for equirectangular edge).
+  - `skip_small_masks` + `min_mask_ratio`: ignore views with too few valid pixels.
+  - `wrap_consistency`: enforce left/right seam consistency after depth fusion.
+  - `polar_smooth` + `polar_cap_ratio` + `polar_blur_ks`: stabilize zenith/nadir regions.
   - `fill_holes`: Fill small holes after merge by averaging neighbors.
   - `hole_iters`: Number of fill iterations.
   - `horizontal_wrap`: Use horizontal wrap border when remapping per-view data to the panorama grid. Keep off unless debugging edge cases.
@@ -61,12 +70,12 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
   - `output_glb`: Export textured mesh as `.glb` built over the panorama grid.
   - `glb_rotate_x_deg`: Extra clockwise rotation around X (red) axis for GLB export.
   - `filename_prefix`: Output prefix under ComfyUI’s output directory.
-  - `use_fp16`: Use half precision to reduce VRAM and improve speed.
+- `use_fp16`: Use half precision to reduce VRAM and improve speed.
 - Outputs:
   - `depth`: Panorama depth visualization (closer appears brighter in the preview).
   - `normal`: Panorama normal visualization (world-space, stitched from views).
-  - `pcl_path`: Saved point cloud path (STRING, `.ply`).
-  - `glb_path`: Saved textured mesh path (STRING, `.glb`).
+- `pcl_path`: Saved point cloud path (STRING, `.ply`).
+- `glb_path`: Saved textured mesh path (STRING, `.glb`). If multiple per-label GLBs are exported, this string contains multiple lines: the main GLB (if enabled) and then one path per label GLB.
 
 #### Misalignment Fix (Rotation Order)
 

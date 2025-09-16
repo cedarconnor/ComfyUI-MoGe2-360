@@ -209,16 +209,24 @@ class MoGe2Panorama:
                 "model": (["v1", "v2"], {"default": "v2", "tooltip": "MoGe model version. Default v2 outputs normals and metric scale; v1 has no normals."}),
                 "model_path": ("STRING", {"default": "C:/models/Ruicheng/moge-2-vitl-normal", "tooltip": "Local checkpoint folder. If set and exists, overrides the version mapping. No network download."}),
                 "image": ("IMAGE", {"tooltip": "Equirectangular panorama (H×W×3) as a ComfyUI IMAGE tensor. Output resolution matches input."}),
-                "face_resolution": ("INT", {"default": 512, "min": 128, "max": 1536, "step": 64, "tooltip": "Per-view resolution for virtual cameras (icosahedron). Higher = more detail and smoother seams."}),
-                "resolution_level": (["Low", "Medium", "High", "Ultra"], {"default": "High", "tooltip": "Model token resolution. Higher improves quality at the cost of speed/VRAM."}),
-                "view_fov_x_deg": ("INT", {"default": 90, "min": 60, "max": 120, "step": 5, "tooltip": "Virtual camera horizontal FOV. Increase (e.g., 100–110) to create more overlap for seam smoothing."}),
-                "merge_method": (["z_buffer", "weighted"], {"default": "weighted", "tooltip": "Merge strategy. weighted blends overlapping views by angle/depth; z_buffer picks nearest distance per ray."}),
+                "face_resolution": ("INT", {"default": 768, "min": 128, "max": 1536, "step": 64, "tooltip": "Per-view resolution for virtual cameras (icosahedron). Higher = more detail and smoother seams."}),
+                "resolution_level": (["Low", "Medium", "High", "Ultra"], {"default": "Ultra", "tooltip": "Model token resolution. Higher improves quality at the cost of speed/VRAM."}),
+                "view_fov_x_deg": ("INT", {"default": 110, "min": 60, "max": 120, "step": 5, "tooltip": "Virtual camera horizontal FOV. Increase (e.g., 100–110) to create more overlap for seam smoothing."}),
+                "merge_method": (["z_buffer", "weighted", "affine_depth", "poisson_depth"], {"default": "z_buffer", "tooltip": "Merge strategy. 'z_buffer' picks nearest along ray; 'weighted' blends points; 'affine_depth' aligns and blends depth on the pano; 'poisson_depth' merges depth via gradient Poisson integration."}),
+                "zbuffer_mode": (["ray", "radial"], {"default": "ray", "tooltip": "z_buffer distance definition: 'ray' uses distance along the panorama ray (recommended), 'radial' uses ||P||."}),
                 "angle_power": ("FLOAT", {"default": 2.0, "min": 0.0, "max": 8.0, "step": 0.5, "tooltip": "Weighted merge: weight ∝ cos(theta)^p. Higher p reduces seams by favoring view centers."}),
                 "depth_alpha": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "Weighted merge: optional weight ∝ 1/(distance^alpha). Use small values (0.3–0.7) to limit occlusion smearing."}),
                 "fill_holes": ("BOOLEAN", {"default": True, "tooltip": "Post-merge hole fill using 3×3 neighbor averages for points (and normals)."}),
-                "hole_iters": ("INT", {"default": 1, "min": 0, "max": 5, "step": 1, "tooltip": "Hole-fill iterations. 1–2 usually enough; 0 disables."}),
+                "hole_iters": ("INT", {"default": 2, "min": 0, "max": 5, "step": 1, "tooltip": "Hole-fill iterations. 1–2 usually enough; 0 disables."}),
                 "apply_mask": ("BOOLEAN", {"default": True, "tooltip": "Apply model validity mask to ignore unreliable pixels before merging."}),
-                "horizontal_wrap": ("BOOLEAN", {"default": False, "tooltip": "Use horizontal wrap when remapping onto the pano grid. Helps at the left/right seam."}),
+                "horizontal_wrap": ("BOOLEAN", {"default": True, "tooltip": "Use horizontal wrap when remapping onto the pano grid. Helps at the left/right seam."}),
+                "skip_small_masks": ("BOOLEAN", {"default": True, "tooltip": "Skip per-view predictions whose valid mask is very small (prevents corrupt blending)."}),
+                "min_mask_ratio": ("FLOAT", {"default": 0.005, "min": 0.0, "max": 0.1, "step": 0.001, "tooltip": "Minimum fraction of valid pixels required for a view to participate (e.g., 0.5%)."}),
+                "wrap_consistency": ("BOOLEAN", {"default": True, "tooltip": "After depth fusion, enforce left/right seam consistency by averaging the boundary columns."}),
+                "align_in_disparity": ("BOOLEAN", {"default": True, "tooltip": "When using affine_depth, fit scale+bias in disparity (1/depth) as in HunyuanWorld/Voyager; improves cross-slice consistency."}),
+                "polar_smooth": ("BOOLEAN", {"default": True, "tooltip": "Apply smoothing near poles (top/bottom) to stabilize geometry."}),
+                "polar_cap_ratio": ("FLOAT", {"default": 0.06, "min": 0.0, "max": 0.2, "step": 0.005, "tooltip": "Portion of image height at each pole to smooth (e.g., 0.06 = 6%)."}),
+                "polar_blur_ks": ("INT", {"default": 7, "min": 3, "max": 31, "step": 2, "tooltip": "Odd kernel size for Gaussian blur used in polar smoothing."}),
                 "export_per_view": ("BOOLEAN", {"default": False, "tooltip": "Export each virtual view as PLY/GLB to inspect per-view geometry and coverage."}),
                 "per_view_export_format": (["ply", "glb", "both"], {"default": "ply", "tooltip": "Per-view export format for debugging and QA."}),
                 "per_view_prefix": ("STRING", {"default": "3D/MoGe_Pano_Views", "tooltip": "Output prefix/path for per-view exports under ComfyUI’s output directory."}),
@@ -227,6 +235,13 @@ class MoGe2Panorama:
                 "glb_rotate_x_deg": ("INT", {"default": 90, "min": -180, "max": 180, "step": 15, "tooltip": "Extra clockwise rotation around X (red) axis for GLB export to match viewer conventions."}),
                 "filename_prefix": ("STRING", {"default": "3D/MoGe_Pano", "tooltip": "Output prefix under ComfyUI’s output directory for PLY/GLB."}),
                 "use_fp16": ("BOOLEAN", {"default": True, "tooltip": "Use FP16 inference to reduce VRAM and improve speed."}),
+            },
+            "optional": {
+                "mask_image": ("IMAGE", {"tooltip": "Optional label/mask IMAGE at panorama resolution. Unique intensities/colors denote labels; 0 treated as background if mask_ignore_zero is on."}),
+                "multi_glb_from_mask": ("BOOLEAN", {"default": False, "tooltip": "When true and mask_image is provided, export one GLB per label region."}),
+                "mask_ignore_zero": ("BOOLEAN", {"default": True, "tooltip": "Ignore label value 0 when exporting per-label GLBs."}),
+                "min_label_area_ratio": ("FLOAT", {"default": 0.005, "min": 0.0, "max": 0.5, "step": 0.001, "tooltip": "Minimum fraction of pano pixels required to export a label GLB (e.g., 0.5%)."}),
+                "multi_glb_prefix": ("STRING", {"default": "3D/MoGe_Pano_Label", "tooltip": "Output prefix for per-label GLBs under ComfyUI outputs."}),
             }
         }
 
@@ -235,7 +250,7 @@ class MoGe2Panorama:
     FUNCTION = "process"
     CATEGORY = "MoGe2"
     OUTPUT_NODE = True
-    DESCRIPTION = "MoGe-2 panorama inference with metric-preserving merge (weighted default)."
+    DESCRIPTION = "MoGe-2 panorama inference with metric-preserving merge (z-buffer default)."
 
     def _to_numpy_image(self, image: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
         if isinstance(image, torch.Tensor):
@@ -346,12 +361,20 @@ class MoGe2Panorama:
                 resolution_level: str,
                 view_fov_x_deg: int,
                 merge_method: str,
+                zbuffer_mode: str,
                 angle_power: float,
                 depth_alpha: float,
                 fill_holes: bool,
                 hole_iters: int,
                 apply_mask: bool,
                 horizontal_wrap: bool,
+                skip_small_masks: bool,
+                min_mask_ratio: float,
+                wrap_consistency: bool,
+                align_in_disparity: bool,
+                polar_smooth: bool,
+                polar_cap_ratio: float,
+                polar_blur_ks: int,
                 export_per_view: bool,
                 per_view_export_format: str,
                 per_view_prefix: str,
@@ -359,7 +382,13 @@ class MoGe2Panorama:
                 output_glb: bool,
                 glb_rotate_x_deg: int,
                 filename_prefix: str,
-                use_fp16: bool) -> Tuple[torch.Tensor, torch.Tensor, str, str]:
+                use_fp16: bool,
+                mask_image: Optional[Union[np.ndarray, torch.Tensor]] = None,
+                multi_glb_from_mask: bool = False,
+                mask_ignore_zero: bool = True,
+                min_label_area_ratio: float = 0.005,
+                multi_glb_prefix: str = "3D/MoGe_Pano_Label",
+                ) -> Tuple[torch.Tensor, torch.Tensor, str, str]:
 
         # Resolve model path from version unless an override path is provided
         version_to_default_local = {
@@ -392,6 +421,9 @@ class MoGe2Panorama:
         per_points: List[np.ndarray] = []
         per_normals: List[Optional[np.ndarray]] = []
         per_masks: List[np.ndarray] = []
+        # For Poisson depth fusion (view-domain inputs)
+        view_distance_maps: List[np.ndarray] = []
+        view_pred_masks: List[np.ndarray] = []
         face_h, face_w = face_resolution, face_resolution
         for vi, img in enumerate(view_images):
             # prepare tensor
@@ -418,6 +450,16 @@ class MoGe2Panorama:
             if normal is not None:
                 normal = normal.astype(np.float32)
 
+            # Optionally skip views with too few valid pixels
+            if apply_mask and skip_small_masks:
+                valid_px = int(mask.sum())
+                min_px = int(face_resolution * face_resolution * float(min_mask_ratio))
+                if valid_px < max(16, min_px):
+                    per_points.append(None)
+                    per_normals.append(None)
+                    per_masks.append(None)
+                    continue
+
             # Apply mask to invalidate
             if apply_mask:
                 invalid = ~mask
@@ -428,6 +470,13 @@ class MoGe2Panorama:
             per_points.append(points)
             per_normals.append(normal)
             per_masks.append(mask)
+            # Record per-view radial distance for Poisson fusion (sanitize invalid)
+            dist_view = np.linalg.norm(points, axis=-1).astype(np.float32)
+            if apply_mask:
+                # Replace invalid distances with a benign positive value; masks will exclude them later
+                dist_view[~mask] = 1.0
+            view_distance_maps.append(dist_view)
+            view_pred_masks.append(mask.astype(bool))
 
             # Optional: export per-view debug assets (PLY/GLB)
             if export_per_view:
@@ -515,11 +564,19 @@ class MoGe2Panorama:
             best_point_world = np.full((pano_h, pano_w, 3), np.nan, dtype=np.float32)
             best_normal_world = np.full((pano_h, pano_w, 3), 0, dtype=np.float32)
             final_mask = np.zeros((pano_h, pano_w), dtype=bool)
-        else:
+        elif merge_method == 'weighted':
             accum_w = np.zeros((pano_h, pano_w), dtype=np.float32)
             accum_pts = np.zeros((pano_h, pano_w, 3), dtype=np.float32)
             accum_norm = np.zeros((pano_h, pano_w, 3), dtype=np.float32)
             final_mask = np.zeros((pano_h, pano_w), dtype=bool)
+        else:
+            # depth-domain fusion containers
+            dist_maps: List[np.ndarray] = []
+            mask_maps: List[np.ndarray] = []
+            weight_maps: List[np.ndarray] = []
+            rotated_normals: List[Optional[np.ndarray]] = []
+            # also collect per-view rotations for norm blending when needed
+            final_mask = None  # will define later
 
         for i in range(num_views):
             pts = per_points[i]
@@ -549,11 +606,17 @@ class MoGe2Panorama:
             R = self._extract_rotation(extrinsics[i])  # world->camera rotation
             pts_cam = remap_points.reshape(-1, 3)
             pts_world = (pts_cam @ R).reshape(pano_h, pano_w, 3)
-            dist = np.linalg.norm(pts_world, axis=-1)
+            if zbuffer_mode == 'ray':
+                dist = np.sum(pts_world * spherical_dirs, axis=-1)
+            else:
+                dist = np.linalg.norm(pts_world, axis=-1)
 
             if merge_method == 'z_buffer':
                 # Z-buffer update
-                better = (dist < best_dist) & valid_here
+                if zbuffer_mode == 'ray':
+                    better = (dist > 0) & (dist < best_dist) & valid_here
+                else:
+                    better = (dist < best_dist) & valid_here
                 if np.any(better):
                     best_dist[better] = dist[better]
                     best_point_world[better] = pts_world[better]
@@ -568,7 +631,7 @@ class MoGe2Panorama:
                         n_world = n_world / (np.linalg.norm(n_world, axis=-1, keepdims=True) + 1e-8)
                         n_world = n_world.reshape(pano_h, pano_w, 3)
                         best_normal_world[better] = n_world[better]
-            else:
+            elif merge_method == 'weighted':
                 # Weighted merge by view angle (and optional distance)
                 # Camera forward in world: third row of R
                 forward_world = R[2, :]
@@ -594,6 +657,27 @@ class MoGe2Panorama:
                         n_world = n_world / (np.linalg.norm(n_world, axis=-1, keepdims=True) + 1e-8)
                         accum_norm += (w[..., None] * n_world)
                     accum_w += w
+            else:
+                # depth-domain fusion precompute: distances, weights, masks, normals
+                forward_world = R[2, :]
+                cosang = np.clip((spherical_dirs * forward_world[None, None, :]).sum(axis=-1), 0.0, 1.0)
+                w = cosang ** float(angle_power) if angle_power > 0 else np.ones_like(dist)
+                if depth_alpha > 0:
+                    w = w / np.power(np.maximum(dist, 1e-6), float(depth_alpha))
+                w = np.where(valid_here, w, 0.0).astype(np.float32)
+                # Store maps for later affine/Poisson fusion
+                dist_maps.append(dist.astype(np.float32))
+                mask_maps.append(valid_here.astype(bool))
+                weight_maps.append(w)
+                normal = per_normals[i]
+                if normal is not None:
+                    remap_normal = self._remap_multi(normal, proj_pixels[..., 0], proj_pixels[..., 1], interpolation=cv2.INTER_LINEAR)
+                    n_cam = remap_normal.reshape(-1, 3)
+                    n_world = (n_cam @ R).reshape(pano_h, pano_w, 3)
+                    n_world = n_world / (np.linalg.norm(n_world, axis=-1, keepdims=True) + 1e-8)
+                    rotated_normals.append(n_world.astype(np.float32))
+                else:
+                    rotated_normals.append(None)
 
         # Consolidate weighted merge results and optional hole fill
         if merge_method == 'weighted':
@@ -607,6 +691,118 @@ class MoGe2Panorama:
                 n = n / (np.linalg.norm(n, axis=-1, keepdims=True) + 1e-8)
                 best_normal_world = n.astype(np.float32)
             final_mask = valid
+        elif merge_method in ('affine_depth', 'poisson_depth'):
+            # Depth-domain fusion
+            pano_depth = None
+            if merge_method == 'affine_depth' and len(dist_maps) > 0:
+                # Running baseline alignment and blending
+                accum_depth = np.full((pano_h, pano_w), np.inf, dtype=np.float32)
+                accum_w = np.zeros((pano_h, pano_w), dtype=np.float32)
+                # helper to compute weighted LS a,b s.t. y ≈ a x + b
+                def wls_affine(x, y, w):
+                    x = x.astype(np.float32); y = y.astype(np.float32); w = w.astype(np.float32)
+                    S = np.sum(w)
+                    if S < 1e-6:
+                        return 1.0, 0.0
+                    Sx = np.sum(w * x)
+                    Sy = np.sum(w * y)
+                    Sxx = np.sum(w * x * x)
+                    Sxy = np.sum(w * x * y)
+                    denom = S * Sxx - Sx * Sx
+                    if abs(denom) < 1e-6:
+                        return 1.0, 0.0
+                    a = (S * Sxy - Sx * Sy) / denom
+                    b = (Sxx * Sy - Sx * Sxy) / denom
+                    return float(a), float(b)
+                # integrate views
+                for vi in range(len(dist_maps)):
+                    d = dist_maps[vi]
+                    m = mask_maps[vi]
+                    w = weight_maps[vi]
+                    if pano_depth is None:
+                        # initialize with first valid map
+                        pano_depth = np.where(m, d, np.inf).astype(np.float32)
+                        accum_depth = np.where(m, d * w, 0.0).astype(np.float32)
+                        accum_w = np.where(m, w, 0.0).astype(np.float32)
+                    else:
+                        overlap = m & (accum_w > 0)
+                        if np.any(overlap):
+                            x_d = d[overlap]
+                            y_d = (accum_depth[overlap] / (accum_w[overlap] + 1e-6))
+                            w_overlap = w[overlap]
+                            if align_in_disparity:
+                                # work in disparity: s = 1/depth
+                                x = 1.0 / np.maximum(x_d, 1e-6)
+                                y = 1.0 / np.maximum(y_d, 1e-6)
+                                a, b = wls_affine(x, y, w_overlap)
+                                s = a * (1.0 / np.maximum(d, 1e-6)) + b
+                                d_aligned = 1.0 / np.maximum(s, 1e-6)
+                            else:
+                                a, b = wls_affine(x_d, y_d, w_overlap)
+                                d_aligned = a * d + b
+                        else:
+                            d_aligned = d
+                        # blend by weights
+                        accum_depth = np.where(m, accum_depth + d_aligned * w, accum_depth)
+                        accum_w = np.where(m, accum_w + w, accum_w)
+                        pano_depth = accum_depth / (accum_w + 1e-6)
+                final_mask = accum_w > 1e-6
+            elif merge_method == 'poisson_depth' and len(view_distance_maps) > 0:
+                try:
+                    from .moge.utils.panorama import merge_panorama_depth as _merge_panorama_depth
+                    pano_depth, final_mask = _merge_panorama_depth(pano_w, pano_h, view_distance_maps, view_pred_masks, extrinsics, intrinsics_list)
+                except Exception as e:
+                    log.exception("Poisson depth merge failed, falling back to affine_depth: %s", e)
+                    # Simple fallback: average with weights
+                    accum_depth = np.zeros((pano_h, pano_w), dtype=np.float32)
+                    accum_w = np.zeros((pano_h, pano_w), dtype=np.float32)
+                    for d, m, w in zip(dist_maps, mask_maps, weight_maps):
+                        accum_depth += np.where(m, d * w, 0.0)
+                        accum_w += np.where(m, w, 0.0)
+                    pano_depth = np.where(accum_w > 0, accum_depth / (accum_w + 1e-6), 0.0).astype(np.float32)
+                    final_mask = accum_w > 0
+
+            # Optional wrap seam consistency
+            if pano_depth is None:
+                pano_depth = np.zeros((pano_h, pano_w), dtype=np.float32)
+                final_mask = np.zeros((pano_h, pano_w), dtype=bool)
+            if wrap_consistency and np.any(final_mask):
+                left = pano_depth[:, 0]
+                right = pano_depth[:, -1]
+                both = (final_mask[:, 0] & final_mask[:, -1])
+                avg = (left + right) * 0.5
+                pano_depth[:, 0][both] = avg[both]
+                pano_depth[:, -1][both] = avg[both]
+
+            # Optional polar smoothing
+            if polar_smooth and np.any(final_mask):
+                cap = max(1, int(polar_cap_ratio * pano_h))
+                k = max(3, int(polar_blur_ks) | 1)  # ensure odd
+                if cap > 0:
+                    top = pano_depth[:cap]
+                    bot = pano_depth[-cap:]
+                    pano_depth[:cap] = cv2.GaussianBlur(top, (k, k), 0)
+                    pano_depth[-cap:] = cv2.GaussianBlur(bot, (k, k), 0)
+
+            # Convert pano depth to world points along rays
+            best_point_world = spherical_dirs * pano_depth[..., None]
+            # Blend normals across views using the same weights collected
+            if any(n is not None for n in rotated_normals):
+                accum_n = np.zeros((pano_h, pano_w, 3), dtype=np.float32)
+                accum_w_n = np.zeros((pano_h, pano_w), dtype=np.float32)
+                for n, w, m in zip(rotated_normals, weight_maps, mask_maps):
+                    if n is None:
+                        continue
+                    ww = np.where(m, w, 0.0)
+                    accum_n += ww[..., None] * n
+                    accum_w_n += ww
+                best_normal_world = np.zeros_like(accum_n)
+                valid_n = accum_w_n > 1e-6
+                best_normal_world[valid_n] = accum_n[valid_n] / (accum_w_n[valid_n, None] + 1e-6)
+                nn = np.linalg.norm(best_normal_world, axis=-1, keepdims=True) + 1e-8
+                best_normal_world = best_normal_world / nn
+            else:
+                best_normal_world = np.zeros((pano_h, pano_w, 3), dtype=np.float32)
 
         # Simple hole filling (optional)
         if fill_holes:
@@ -614,7 +810,7 @@ class MoGe2Panorama:
 
         # Build visualization images
         if np.any(final_mask):
-            if merge_method == 'weighted':
+            if merge_method in ('weighted', 'affine_depth', 'poisson_depth'):
                 dvals = np.linalg.norm(best_point_world, axis=-1)
             else:
                 dvals = best_dist.copy()
@@ -652,6 +848,8 @@ class MoGe2Panorama:
             pcl_relative_path = "Point cloud export disabled or empty mask"
 
         # Optional GLB export (textured mesh over the pano grid)
+        label_glb_paths: List[str] = []
+
         if output_glb and np.any(final_mask):
             try:
                 # Build a triangulated image mesh using the pano grid
@@ -719,9 +917,98 @@ class MoGe2Panorama:
             else:
                 glb_relative_path = "GLB export disabled"
 
+        # Optional: export multiple GLBs based on a label/mask image
+        if multi_glb_from_mask and (mask_image is not None) and np.any(final_mask):
+            try:
+                mask_np = self._to_numpy_image(mask_image)
+                if mask_np.ndim == 3 and mask_np.shape[2] == 3:
+                    labels_map = (mask_np[..., 0].astype(np.int64) << 16) | (mask_np[..., 1].astype(np.int64) << 8) | (mask_np[..., 2].astype(np.int64))
+                else:
+                    if mask_np.ndim == 3 and mask_np.shape[2] == 1:
+                        mask_np = mask_np[..., 0]
+                    labels_map = mask_np.astype(np.int64)
+                if labels_map.shape[:2] != (pano_h, pano_w):
+                    labels_map = cv2.resize(labels_map, (pano_w, pano_h), interpolation=cv2.INTER_NEAREST)
+                unique_labels = np.unique(labels_map)
+                if mask_ignore_zero:
+                    unique_labels = unique_labels[unique_labels != 0]
+                total_px = pano_h * pano_w
+                uv_grid = self._image_uv(width=pano_w, height=pano_h)
+
+                for lbl in unique_labels:
+                    region_mask = final_mask & (labels_map == int(lbl))
+                    if np.count_nonzero(region_mask) < max(64, int(min_label_area_ratio * total_px)):
+                        continue
+                    # Build mesh for this label only
+                    try:
+                        if best_normal_world is not None and np.any(region_mask):
+                            faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.numpy.image_mesh(
+                                best_point_world,
+                                pano.astype(np.float32) / 255.0,
+                                uv_grid,
+                                best_normal_world.astype(np.float32),
+                                mask=region_mask,
+                                tri=True,
+                            )
+                        else:
+                            faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
+                                best_point_world,
+                                pano.astype(np.float32) / 255.0,
+                                uv_grid,
+                                mask=region_mask,
+                                tri=True,
+                            )
+                            vertex_normals = None
+
+                        # Orientation and extra rotation
+                        vertices = vertices * np.array([1, -1, -1], dtype=np.float32)
+                        vertex_uvs = vertex_uvs * np.array([1, -1], dtype=np.float32) + np.array([0, 1], dtype=np.float32)
+                        if vertex_normals is not None:
+                            vertex_normals = vertex_normals * np.array([1, -1, -1], dtype=np.float32)
+                        if glb_rotate_x_deg != 0:
+                            theta = np.deg2rad(glb_rotate_x_deg)
+                            c, s = np.cos(theta), np.sin(theta)
+                            Rx = np.array([[1, 0, 0], [0, c, s], [0, -s, c]], dtype=np.float32)
+                            vertices = (vertices @ Rx.T)
+                            if vertex_normals is not None:
+                                vertex_normals = (vertex_normals @ Rx.T)
+
+                        mesh = trimesh.Trimesh(
+                            vertices=vertices,
+                            faces=faces,
+                            vertex_normals=vertex_normals,
+                            visual=trimesh.visual.texture.TextureVisuals(
+                                uv=vertex_uvs,
+                                material=trimesh.visual.material.PBRMaterial(
+                                    baseColorTexture=Image.fromarray(pano),
+                                    metallicFactor=0.5,
+                                    roughnessFactor=1.0,
+                                ),
+                            ),
+                            process=False,
+                        )
+
+                        full_output_folder, filename2, counter2, subfolder2, _ = folder_paths.get_save_image_path(multi_glb_prefix, folder_paths.get_output_directory())
+                        out_path = Path(full_output_folder) / f"{filename2}_{counter2:05}_label{int(lbl)}.glb"
+                        out_path.parent.mkdir(exist_ok=True, parents=True)
+                        mesh.export(out_path)
+                        label_glb_paths.append(str(Path(subfolder2) / f"{filename2}_{counter2:05}_label{int(lbl)}.glb"))
+                    except Exception as e:
+                        log.exception("Per-label GLB export failed for label %s: %s", str(lbl), e)
+            except Exception as e:
+                log.exception("Label mask processing failed: %s", e)
+
         # Convert to tensors for ComfyUI
         depth_tensor = self._numpy_to_tensor_image(depth_vis_rgb)
         normal_tensor = self._numpy_to_tensor_image(normal_vis)
+
+        # If multi GLBs were exported, append the list to the glb_path output for visibility
+        if label_glb_paths:
+            extra = "\n".join(label_glb_paths)
+            if isinstance(glb_relative_path, str) and len(glb_relative_path) > 0:
+                glb_relative_path = glb_relative_path + "\n" + extra
+            else:
+                glb_relative_path = extra
 
         return (depth_tensor, normal_tensor, pcl_relative_path, glb_relative_path)
 

@@ -6,7 +6,7 @@ The goal is to extend the zade23 ComfyUI node for MoGe2 so that it can process *
 
 ---
 
-Update 2025-09-15: Implemented the panorama node with default model v2 (normals), default weighted merge for smoother seams, GLB orientation control, simple hole filling, optional per-view exports (PLY/GLB), and a synthetic validation script. Also fixed a rotation-order bug that caused per-segment misalignment.
+Update 2025-09-15: Implemented the panorama node with default model v2 (normals), default z-buffer merge (ray distance) for metric consistency, GLB orientation control, simple hole filling, optional per-view exports (PLY/GLB), and a synthetic validation script. Fixed a rotation-order bug that caused per-segment misalignment. Added depth-image fusion options (`affine_depth` with disparity-based alignment; `poisson_depth`) and seam/pole handling. Added optional mask-based multi-GLB export to split the final panorama mesh into labeled parts.
 
 ## Background & Key Features of MoGe-2 & infer_panorama.py
 
@@ -127,6 +127,7 @@ Here’s a task breakdown that Codex / agent might perform in order:
   - Across views, pick the valid contribution with the smallest `t` (z-buffer) per panorama pixel. Do not apply log-distance blending, affine normalization, or gradient Poisson solves in this path to preserve metric scale.
 - Normals: Merge normals by selecting the same winning view per pixel, after rotating normals to world space. Visualize with the existing `colorize_normal` utility.
 - Exports: Optionally export a world-space point cloud (PLY) and a textured mesh (GLB) built over the panorama grid. Exports use ComfyUI's `folder_paths` with a configurable `filename_prefix`.
+  - New: If `mask_image` is provided and `multi_glb_from_mask=True`, export one GLB per label region (unique color/intensity). Parameters: `mask_ignore_zero`, `min_label_area_ratio`, `multi_glb_prefix`.
 - Parameters:
   - `model` (enum: v1/v2, default v2): select MoGe version (panorama prefers v2 for metric scale and normals).
   - `model_path` (string, optional, local): local checkpoint path that overrides the version mapping when present.
@@ -172,3 +173,8 @@ Run:
 - Outputs under `outputs/validate_panorama/`: `diff_heatmap.png`, `mask.png`.
 
 ---
+## Notes for contributors
+
+- Prefer `merge_method=z_buffer` (ray) for metric fidelity. Use `affine_depth` for very smooth seams; keep `align_in_disparity=True` to reduce slice-to-slice drift.
+- `mask_image` should match final panorama resolution; unique colors/intensities are mapped to label IDs; label 0 ignored by default.
+- Per-label GLBs are written under `multi_glb_prefix` and paths appended line-by-line to the node’s `glb_path` output.
