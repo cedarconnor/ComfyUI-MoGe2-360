@@ -48,11 +48,13 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
   - `view_fov_x_deg`: Virtual view FOV (default 110) for more overlap and smoother seams.
 - `merge_method`: `z_buffer` (default) picks nearest distance; `weighted` blends overlapping views by angle and optional depth; `affine_depth` aligns and blends depth per slice (scale+bias) in the pano; `poisson_depth` fuses depth via gradient-domain Poisson integration.
 - `zbuffer_mode`: `ray` (default) uses distance along the panorama ray; `radial` uses ||P||.
- - `mask_image` (optional): label/mask IMAGE at panorama resolution. Unique colors (RGB) or intensities denote labels; 0 is background by default.
- - `multi_glb_from_mask`: if true (with `mask_image`), exports one GLB per label region.
- - `mask_ignore_zero`: ignore label 0 when exporting per-label GLBs.
- - `min_label_area_ratio`: minimum fraction of pixels a label must occupy to export (default 0.5%).
- - `multi_glb_prefix`: output prefix for per-label GLBs under ComfyUI’s output directory.
+ - `mesh_wrap_x`: Close the panorama seam by connecting x=0 and x=W-1 with duplicated UVs. Prevents gaps and keeps texture seams stable.
+ - `export_depth` + `depth_format` + `depth_prefix`: Save fused depth as 16‑bit PNG (mm), EXR float, or both.
+- `mask_image` (optional): label/mask IMAGE at panorama resolution. Unique colors (RGB) or intensities denote labels; 0 is background by default.
+- `multi_glb_from_mask`: if true (with `mask_image`), exports one GLB per label region.
+- `mask_ignore_zero`: ignore label 0 when exporting per-label GLBs.
+- `min_label_area_ratio`: minimum fraction of pixels a label must occupy to export (default 0.5%).
+- `multi_glb_prefix`: output prefix for per-label GLBs under ComfyUI’s output directory.
   - `angle_power`: Angle weighting exponent for `weighted` merge (weight ~ cos(theta)^p).
   - `depth_alpha`: Optional depth factor for `weighted` merge (weight ~ 1 / distance^alpha).
   - `apply_mask`: Apply model validity mask to ignore unreliable pixels.
@@ -76,6 +78,14 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
   - `normal`: Panorama normal visualization (world-space, stitched from views).
 - `pcl_path`: Saved point cloud path (STRING, `.ply`).
 - `glb_path`: Saved textured mesh path (STRING, `.glb`). If multiple per-label GLBs are exported, this string contains multiple lines: the main GLB (if enabled) and then one path per label GLB.
+ - `depth_file`: Path(s) to exported depth files (one per line if multiple formats were chosen).
+
+### Example Workflow
+
+See `example_workflows/MoGe2Panorama_LabelExport.json` for a simple setup that:
+- Loads a panorama and a label mask,
+- Runs `MoGe2Panorama` with `multi_glb_from_mask` enabled,
+- Saves the depth visualization, and exports per‑label GLBs.
 
 #### Misalignment Fix (Rotation Order)
 

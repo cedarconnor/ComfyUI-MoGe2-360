@@ -128,6 +128,8 @@ Here’s a task breakdown that Codex / agent might perform in order:
 - Normals: Merge normals by selecting the same winning view per pixel, after rotating normals to world space. Visualize with the existing `colorize_normal` utility.
 - Exports: Optionally export a world-space point cloud (PLY) and a textured mesh (GLB) built over the panorama grid. Exports use ComfyUI's `folder_paths` with a configurable `filename_prefix`.
   - New: If `mask_image` is provided and `multi_glb_from_mask=True`, export one GLB per label region (unique color/intensity). Parameters: `mask_ignore_zero`, `min_label_area_ratio`, `multi_glb_prefix`.
+  - New: `mesh_wrap_x` closes the equirectangular seam by adding faces between the first and last columns with duplicated UVs to avoid texture interpolation issues.
+  - New: Depth file export via `export_depth` + `depth_format` (`png16` in millimeters, `exr` float, or `both`), with `depth_prefix` for output path.
 - Parameters:
   - `model` (enum: v1/v2, default v2): select MoGe version (panorama prefers v2 for metric scale and normals).
   - `model_path` (string, optional, local): local checkpoint path that overrides the version mapping when present.
@@ -167,6 +169,7 @@ Here’s a task breakdown that Codex / agent might perform in order:
 
 - Added `scripts/validate_panorama.py` which simulates a unit sphere panorama, generates per-view camera-space predictions, merges using the same z-buffer world-frame logic, and reports mean absolute 3D error.
 - Expected: near-zero error and clean seams, confirming rotation handling and projection are consistent.
+ - `scripts/run_tests.py` includes a synthetic test harness and a stub of `folder_paths` so tests can run outside ComfyUI.
 
 Run:
 - `python scripts/validate_panorama.py`

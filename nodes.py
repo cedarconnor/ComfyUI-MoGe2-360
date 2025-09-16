@@ -231,9 +231,13 @@ class MoGe2Panorama:
                 "per_view_export_format": (["ply", "glb", "both"], {"default": "ply", "tooltip": "Per-view export format for debugging and QA."}),
                 "per_view_prefix": ("STRING", {"default": "3D/MoGe_Pano_Views", "tooltip": "Output prefix/path for per-view exports under ComfyUI’s output directory."}),
                 "output_pcl": ("BOOLEAN", {"default": True, "tooltip": "Export merged world-space point cloud (.ply) with panorama colors."}),
-                "output_glb": ("BOOLEAN", {"default": False, "tooltip": "Export textured GLB over the panorama grid. Requires utils3d image_mesh; otherwise skipped."}),
+                "output_glb": ("BOOLEAN", {"default": False, "tooltip": "Export textured GLB over the panorama grid. Uses seam wrap connectivity when enabled."}),
+                "mesh_wrap_x": ("BOOLEAN", {"default": True, "tooltip": "Close the panorama seam by connecting x=0 and x=W-1 columns with duplicate UVs (prevents gaps)."}),
                 "glb_rotate_x_deg": ("INT", {"default": 90, "min": -180, "max": 180, "step": 15, "tooltip": "Extra clockwise rotation around X (red) axis for GLB export to match viewer conventions."}),
                 "filename_prefix": ("STRING", {"default": "3D/MoGe_Pano", "tooltip": "Output prefix under ComfyUI’s output directory for PLY/GLB."}),
+                "export_depth": ("BOOLEAN", {"default": False, "tooltip": "Export fused depth as file(s)."}),
+                "depth_format": (["png16", "exr", "both"], {"default": "png16", "tooltip": "Depth export format: 16-bit PNG (scaled mm), OpenEXR float, or both."}),
+                "depth_prefix": ("STRING", {"default": "3D/MoGe_Pano_Depth", "tooltip": "Output prefix for depth files under ComfyUI outputs."}),
                 "use_fp16": ("BOOLEAN", {"default": True, "tooltip": "Use FP16 inference to reduce VRAM and improve speed."}),
             },
             "optional": {
@@ -245,8 +249,8 @@ class MoGe2Panorama:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING", "STRING")
-    RETURN_NAMES = ("depth", "normal", "pcl_path", "glb_path")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("depth", "normal", "pcl_path", "glb_path", "depth_file")
     FUNCTION = "process"
     CATEGORY = "MoGe2"
     OUTPUT_NODE = True
@@ -353,6 +357,72 @@ class MoGe2Panorama:
                 nrm[fill_mask] = nrm_new[fill_mask]
         return pts, nrm, m
 
+    def _mesh_from_pano_wrapx(self, points: np.ndarray, uv_grid: np.ndarray, normals: Optional[np.ndarray], mask: np.ndarray):
+        """Build a seam-closed triangle mesh from a pano grid with horizontal wrap.
+        Returns (faces, vertices, vertex_uvs, vertex_normals or None).
+        """
+        H, W = points.shape[:2]
+        vid = -np.ones((H, W), dtype=np.int32)
+        vertices = []
+        vuv = []
+        vnorm = [] if normals is not None else None
+        # Base vertices
+        for y in range(H):
+            for x in range(W):
+                if not mask[y, x]:
+                    continue
+                p = points[y, x]
+                if not np.isfinite(p).all():
+                    continue
+                vid[y, x] = len(vertices)
+                vertices.append(p)
+                vuv.append(uv_grid[y, x])
+                if normals is not None:
+                    vnorm.append(normals[y, x])
+        vertices = np.array(vertices, dtype=np.float32)
+        vuv = np.array(vuv, dtype=np.float32)
+        if normals is not None:
+            vnorm = np.array(vnorm, dtype=np.float32)
+
+        # Duplicate x=0 seam vertices with u=1 for wrap faces
+        seam_dup_index = -np.ones((H,), dtype=np.int32)
+        for y in range(H):
+            if vid[y, 0] >= 0:
+                seam_dup_index[y] = len(vertices)
+                vertices = np.vstack([vertices, points[y, 0][None, :]])
+                uv = uv_grid[y, 0].copy()
+                uv[0] = 1.0
+                vuv = np.vstack([vuv, uv[None, :]])
+                if normals is not None:
+                    vnorm = np.vstack([vnorm, normals[y, 0][None, :]])
+
+        # Faces
+        faces = []
+        for y in range(H - 1):
+            for x in range(W - 1):
+                a = vid[y, x]
+                b = vid[y, x + 1]
+                c = vid[y + 1, x]
+                d = vid[y + 1, x + 1]
+                if a >= 0 and b >= 0 and c >= 0:
+                    faces.append([a, c, b])
+                if c >= 0 and d >= 0 and b >= 0:
+                    faces.append([c, d, b])
+            # wrap face between x=W-1 and x=0 using seam duplicates for the 0-side
+            a = vid[y, W - 1]
+            b = seam_dup_index[y]
+            c = vid[y + 1, W - 1]
+            d = seam_dup_index[y + 1]
+            if a >= 0 and b >= 0 and c >= 0:
+                faces.append([a, c, b])
+            if c >= 0 and d >= 0 and b >= 0:
+                faces.append([c, d, b])
+        faces = np.array(faces, dtype=np.int32)
+        if normals is not None:
+            return faces, vertices, vuv, vnorm
+        else:
+            return faces, vertices, vuv, None
+
     def process(self,
                 model: str,
                 model_path: str,
@@ -380,15 +450,19 @@ class MoGe2Panorama:
                 per_view_prefix: str,
                 output_pcl: bool,
                 output_glb: bool,
+                mesh_wrap_x: bool,
                 glb_rotate_x_deg: int,
                 filename_prefix: str,
+                export_depth: bool,
+                depth_format: str,
+                depth_prefix: str,
                 use_fp16: bool,
                 mask_image: Optional[Union[np.ndarray, torch.Tensor]] = None,
                 multi_glb_from_mask: bool = False,
                 mask_ignore_zero: bool = True,
                 min_label_area_ratio: float = 0.005,
                 multi_glb_prefix: str = "3D/MoGe_Pano_Label",
-                ) -> Tuple[torch.Tensor, torch.Tensor, str, str]:
+                ) -> Tuple[torch.Tensor, torch.Tensor, str, str, str]:
 
         # Resolve model path from version unless an override path is provided
         version_to_default_local = {
@@ -559,6 +633,7 @@ class MoGe2Panorama:
         spherical_dirs = spherical_uv_to_directions(uv)  # (H, W, 3) world-space unit directions
 
         num_views = len(per_points)
+        export_depth_map = None
         if merge_method == 'z_buffer':
             best_dist = np.full((pano_h, pano_w), np.inf, dtype=np.float32)
             best_point_world = np.full((pano_h, pano_w, 3), np.nan, dtype=np.float32)
@@ -691,6 +766,8 @@ class MoGe2Panorama:
                 n = n / (np.linalg.norm(n, axis=-1, keepdims=True) + 1e-8)
                 best_normal_world = n.astype(np.float32)
             final_mask = valid
+            # Export depth along pano ray
+            export_depth_map = np.maximum(np.sum(best_point_world * spherical_dirs, axis=-1), 0.0)
         elif merge_method in ('affine_depth', 'poisson_depth'):
             # Depth-domain fusion
             pano_depth = None
@@ -786,6 +863,7 @@ class MoGe2Panorama:
 
             # Convert pano depth to world points along rays
             best_point_world = spherical_dirs * pano_depth[..., None]
+            export_depth_map = pano_depth.astype(np.float32)
             # Blend normals across views using the same weights collected
             if any(n is not None for n in rotated_normals):
                 accum_n = np.zeros((pano_h, pano_w, 3), dtype=np.float32)
@@ -803,6 +881,13 @@ class MoGe2Panorama:
                 best_normal_world = best_normal_world / nn
             else:
                 best_normal_world = np.zeros((pano_h, pano_w, 3), dtype=np.float32)
+
+        # For z-buffer, choose depth map to export
+        if merge_method == 'z_buffer':
+            if zbuffer_mode == 'ray':
+                export_depth_map = best_dist.copy()
+            else:
+                export_depth_map = np.maximum(np.sum(best_point_world * spherical_dirs, axis=-1), 0.0)
 
         # Simple hole filling (optional)
         if fill_holes:
@@ -855,24 +940,31 @@ class MoGe2Panorama:
                 # Build a triangulated image mesh using the pano grid
                 uv_grid = self._image_uv(width=pano_w, height=pano_h)
                 # If normals available, try to include; otherwise export without normals
-                if best_normal_world is not None and np.any(final_mask):
-                    faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.numpy.image_mesh(
-                        best_point_world,
-                        pano.astype(np.float32) / 255.0,
-                        uv_grid,
-                        best_normal_world.astype(np.float32),
-                        mask=final_mask,
-                        tri=True,
+                if mesh_wrap_x:
+                    faces, vertices, vertex_uvs, vertex_normals = self._mesh_from_pano_wrapx(
+                        best_point_world.astype(np.float32), uv_grid.astype(np.float32),
+                        best_normal_world.astype(np.float32) if best_normal_world is not None else None,
+                        final_mask,
                     )
                 else:
-                    faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
-                        best_point_world,
-                        pano.astype(np.float32) / 255.0,
-                        uv_grid,
-                        mask=final_mask,
-                        tri=True,
-                    )
-                    vertex_normals = None
+                    if best_normal_world is not None and np.any(final_mask):
+                        faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.numpy.image_mesh(
+                            best_point_world,
+                            pano.astype(np.float32) / 255.0,
+                            uv_grid,
+                            best_normal_world.astype(np.float32),
+                            mask=final_mask,
+                            tri=True,
+                        )
+                    else:
+                        faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
+                            best_point_world,
+                            pano.astype(np.float32) / 255.0,
+                            uv_grid,
+                            mask=final_mask,
+                            tri=True,
+                        )
+                        vertex_normals = None
 
                 # Match orientation and UV; then apply user-specified extra X-rotation
                 vertices = vertices * np.array([1, -1, -1], dtype=np.float32)
@@ -941,24 +1033,31 @@ class MoGe2Panorama:
                         continue
                     # Build mesh for this label only
                     try:
-                        if best_normal_world is not None and np.any(region_mask):
-                            faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.numpy.image_mesh(
-                                best_point_world,
-                                pano.astype(np.float32) / 255.0,
-                                uv_grid,
-                                best_normal_world.astype(np.float32),
-                                mask=region_mask,
-                                tri=True,
+                        if mesh_wrap_x:
+                            faces, vertices, vertex_uvs, vertex_normals = self._mesh_from_pano_wrapx(
+                                best_point_world.astype(np.float32), uv_grid.astype(np.float32),
+                                best_normal_world.astype(np.float32) if best_normal_world is not None else None,
+                                region_mask,
                             )
                         else:
-                            faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
-                                best_point_world,
-                                pano.astype(np.float32) / 255.0,
-                                uv_grid,
-                                mask=region_mask,
-                                tri=True,
-                            )
-                            vertex_normals = None
+                            if best_normal_world is not None and np.any(region_mask):
+                                faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.numpy.image_mesh(
+                                    best_point_world,
+                                    pano.astype(np.float32) / 255.0,
+                                    uv_grid,
+                                    best_normal_world.astype(np.float32),
+                                    mask=region_mask,
+                                    tri=True,
+                                )
+                            else:
+                                faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
+                                    best_point_world,
+                                    pano.astype(np.float32) / 255.0,
+                                    uv_grid,
+                                    mask=region_mask,
+                                    tri=True,
+                                )
+                                vertex_normals = None
 
                         # Orientation and extra rotation
                         vertices = vertices * np.array([1, -1, -1], dtype=np.float32)
@@ -998,6 +1097,32 @@ class MoGe2Panorama:
             except Exception as e:
                 log.exception("Label mask processing failed: %s", e)
 
+        # Optional depth file export
+        depth_relative_path = ""
+        if export_depth and (export_depth_map is not None) and np.any(final_mask):
+            try:
+                full_output_folder_d, filename_d, counter_d, subfolder_d, _ = folder_paths.get_save_image_path(depth_prefix, folder_paths.get_output_directory())
+                paths = []
+                dep = export_depth_map.copy().astype(np.float32)
+                dep[~final_mask] = 0.0
+                if depth_format in ("png16", "both"):
+                    d16 = np.clip(dep * 1000.0, 0, 65535).astype(np.uint16)
+                    out_p = Path(full_output_folder_d) / f"{filename_d}_{counter_d:05}_.png"
+                    out_p.parent.mkdir(exist_ok=True, parents=True)
+                    cv2.imwrite(str(out_p), d16)
+                    paths.append(str(Path(subfolder_d) / f"{filename_d}_{counter_d:05}_.png"))
+                if depth_format in ("exr", "both"):
+                    out_e = Path(full_output_folder_d) / f"{filename_d}_{counter_d:05}_.exr"
+                    out_e.parent.mkdir(exist_ok=True, parents=True)
+                    cv2.imwrite(str(out_e), dep.astype(np.float32))
+                    paths.append(str(Path(subfolder_d) / f"{filename_d}_{counter_d:05}_.exr"))
+                depth_relative_path = "\n".join(paths)
+            except Exception as e:
+                log.exception("Failed to export depth file(s): %s", e)
+                depth_relative_path = "Depth export failed"
+        elif export_depth:
+            depth_relative_path = "Depth export skipped: empty mask"
+
         # Convert to tensors for ComfyUI
         depth_tensor = self._numpy_to_tensor_image(depth_vis_rgb)
         normal_tensor = self._numpy_to_tensor_image(normal_vis)
@@ -1010,7 +1135,7 @@ class MoGe2Panorama:
             else:
                 glb_relative_path = extra
 
-        return (depth_tensor, normal_tensor, pcl_relative_path, glb_relative_path)
+        return (depth_tensor, normal_tensor, pcl_relative_path, glb_relative_path, depth_relative_path)
 
 NODE_CLASS_MAPPINGS = {
     "RunMoGe2Process": RunMoGe2Process,
