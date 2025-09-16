@@ -54,7 +54,20 @@ def test_validate_script():
 
 
 def test_nodes_api():
-    import nodes
+    """Import nodes as a proper package submodule so relative imports work."""
+    import importlib.util
+    import importlib
+    pkg_name = "ComfyUI_MoGe2_360"
+    init_file = REPO_ROOT / "__init__.py"
+    assert init_file.exists(), "__init__.py missing at repo root"
+    spec = importlib.util.spec_from_file_location(pkg_name, str(init_file))
+    pkg = importlib.util.module_from_spec(spec)
+    # Mark as package and register before execution so relative imports resolve
+    pkg.__path__ = [str(REPO_ROOT)]  # type: ignore[attr-defined]
+    sys.modules[pkg_name] = pkg
+    assert spec and spec.loader, "invalid import spec for package"
+    spec.loader.exec_module(pkg)  # type: ignore[arg-type]
+    nodes = importlib.import_module(f"{pkg_name}.nodes")
     assert hasattr(nodes, 'MoGe2Panorama'), "MoGe2Panorama not found"
     Node = nodes.MoGe2Panorama
     spec = Node.INPUT_TYPES()
@@ -98,4 +111,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
