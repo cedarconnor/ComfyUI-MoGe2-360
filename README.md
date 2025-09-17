@@ -43,7 +43,7 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
   - `model` (v1/v2): Choose the MoGe version. Default is `v2` (includes normals).
   - `model_path` (optional): Local override path. If set and exists, it is used instead of the version mapping. If neither exists, the node raises an error.
 - Parameters (brief):
-  - `face_resolution`: Per-view split resolution (icosahedron faces). Higher = finer coverage; more VRAM/time.
+  - `face_resolution`: Per-view split resolution (icosahedron faces). Higher = finer coverage; more VRAM/time. Typical 512–1024; up to 4096 if VRAM allows.
   - `resolution_level`: Internal model token resolution (Low/Medium/High/Ultra). Higher = better, slower.
   - `view_fov_x_deg`: Virtual view FOV (default 110) for more overlap and smoother seams.
 - `merge_method`: `z_buffer` (default) picks nearest distance; `weighted` blends overlapping views by angle and optional depth; `affine_depth` aligns and blends depth per slice (scale+bias) in the pano; `poisson_depth` fuses depth via gradient-domain Poisson integration.
