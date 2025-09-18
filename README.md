@@ -10,6 +10,7 @@ Huggingface demo: https://huggingface.co/spaces/Ruicheng/MoGe-2
 
 ## Updates
 
+- [2025-10-04] Panorama defaults tuned for clean GLBs: auto mask-relaxation, spike denoising, seam/pole smoothing, mesh cleanup, and GLB export enabled by default. README/Agents updated with recommended workflow.
 - [2025-09-15] Panorama mode: default model `v2` with normals; default z-buffer merge (ray distance) for strongest metric consistency; GLB extra rotation option; hole filling; per-view exports; synthetic validation script; fixed segment misalignment (rotation order).
 - [2025-07-29] Support `Ruicheng/moge-2-vitl-normal` and `Ruicheng/moge-vitl` model.
 
@@ -40,39 +41,24 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
   - A local copy of the MoGe checkpoint folder(s). The node resolves a local path from the selected version or uses your `model_path` override. No network download is attempted.
   - Input must be an equirectangular panorama. Output resolution matches the input.
 - Model selection:
-  - `model` (v1/v2): Choose the MoGe version. Default is `v2` (includes normals).
-  - `model_path` (optional): Local override path. If set and exists, it is used instead of the version mapping. If neither exists, the node raises an error.
-- Parameters (brief):
-  - `face_resolution`: Per-view split resolution (icosahedron faces). Higher = finer coverage; more VRAM/time. Typical 512–1024; up to 4096 if VRAM allows.
-  - `resolution_level`: Internal model token resolution (Low/Medium/High/Ultra). Higher = better, slower.
-  - `view_fov_x_deg`: Virtual view FOV (default 110) for more overlap and smoother seams.
-- `merge_method`: `z_buffer` (default) picks nearest distance; `weighted` blends overlapping views by angle and optional depth; `affine_depth` aligns and blends depth per slice (scale+bias) in the pano; `poisson_depth` fuses depth via gradient-domain Poisson integration.
-- `zbuffer_mode`: `ray` (default) uses distance along the panorama ray; `radial` uses ||P||.
- - `mesh_wrap_x`: Close the panorama seam by connecting x=0 and x=W-1 with duplicated UVs. Prevents gaps and keeps texture seams stable.
- - `export_depth` + `depth_format` + `depth_prefix`: Save fused depth as 16‑bit PNG (mm), EXR float, or both.
-- `mask_image` (optional): label/mask IMAGE at panorama resolution. Unique colors (RGB) or intensities denote labels; 0 is background by default.
-- `multi_glb_from_mask`: if true (with `mask_image`), exports one GLB per label region.
-- `mask_ignore_zero`: ignore label 0 when exporting per-label GLBs.
-- `min_label_area_ratio`: minimum fraction of pixels a label must occupy to export (default 0.5%).
-- `multi_glb_prefix`: output prefix for per-label GLBs under ComfyUI’s output directory.
-  - `angle_power`: Angle weighting exponent for `weighted` merge (weight ~ cos(theta)^p).
-  - `depth_alpha`: Optional depth factor for `weighted` merge (weight ~ 1 / distance^alpha).
-  - `apply_mask`: Apply model validity mask to ignore unreliable pixels.
-  - `horizontal_wrap`: Horizontal wrap at the pano seam (useful for equirectangular edge).
-  - `skip_small_masks` + `min_mask_ratio`: ignore views with too few valid pixels.
-  - `wrap_consistency`: enforce left/right seam consistency after depth fusion.
-  - `polar_smooth` + `polar_cap_ratio` + `polar_blur_ks`: stabilize zenith/nadir regions.
-  - `fill_holes`: Fill small holes after merge by averaging neighbors.
-  - `hole_iters`: Number of fill iterations.
-  - `horizontal_wrap`: Use horizontal wrap border when remapping per-view data to the panorama grid. Keep off unless debugging edge cases.
-  - `export_per_view`: Export each per-view prediction for debugging.
-  - `per_view_export_format`: `ply`, `glb`, or `both` for per-view exports.
-  - `per_view_prefix`: Prefix/path for per-view exports under ComfyUI’s output directory.
-  - `output_pcl`: Export merged point cloud as `.ply` with panorama colors.
-  - `output_glb`: Export textured mesh as `.glb` built over the panorama grid.
-  - `glb_rotate_x_deg`: Extra clockwise rotation around X (red) axis for GLB export.
-  - `filename_prefix`: Output prefix under ComfyUI’s output directory.
-- `use_fp16`: Use half precision to reduce VRAM and improve speed.
+  - `model` (v1/v2): Default is `v2` (normals + metric point map). `v1` omits normals but still exports depth/point clouds.
+  - `model_path` (optional): Local override path. If provided and exists, it replaces the internal mapping.
+- Recommended defaults (already applied in the node):
+  - `face_resolution = 1024`: balances seam quality and runtime on 4 K panos; raise to 1536+ if VRAM allows.
+  - `view_fov_x_deg = 110`: ensures generous overlap without extreme distortion.
+  - `merge_method = z_buffer` + `zbuffer_mode = ray`: preserves metric scale by picking the closest intersection along the panorama ray.
+  - `auto_relax_min_mask = True`, `min_valid_views = 14`: auto-reinstate views if mask-filtering leaves coverage gaps.
+  - `polar_smooth = True`, `polar_cap_ratio = 0.10`, `polar_blur_ks = 9`: calms zenith/nadir spikes in GLBs.
+  - `denoise_spikes = True`, `spike_sigma = 2.5`: removes stray ray-distance outliers before meshing.
+  - `output_glb = True`, `mesh_wrap_x = True`, `glb_rotate_x_deg = 90`: exports a ready-to-view GLB with seam closure and viewer-friendly orientation.
+- Other key controls:
+  - `skip_small_masks` + `min_mask_ratio`: still reject tiny/noisy views; auto relax backfills if too many are skipped.
+  - `fill_holes`/`hole_iters`: fills isolated gaps post-merge (defaults keep seams tight without softening geometry).
+  - `export_depth` + `depth_format`: optional quantized (PNG16, mm), floating (EXR), or both depth exports.
+  - `export_per_view`: per-view PLY/GLB for QA of individual virtual cameras (off by default to save time).
+  - `mask_image` + `multi_glb_from_mask`: supply a label panorama to split the final mesh into per-label GLBs.
+  - `resolution_level`: MoGe inference granularity. `Ultra` is default for highest fidelity; drop to `High` if VRAM is tight.
+  - `use_fp16`: keep enabled unless you are debugging numerical issues.
 - Outputs:
   - `depth`: Panorama depth visualization (closer appears brighter in the preview).
   - `normal`: Panorama normal visualization (world-space, stitched from views).

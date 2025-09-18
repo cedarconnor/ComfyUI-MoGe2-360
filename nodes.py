@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 from PIL import Image
-from typing import Dict, Tuple, List, Optional, Union
+from typing import Any, Dict, Tuple, List, Optional, Union
 import folder_paths
 
 script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -209,7 +209,7 @@ class MoGe2Panorama:
                 "model": (["v1", "v2"], {"default": "v2", "tooltip": "Select MoGe version. v2 outputs normals and metric scale; v1 has no normals. Use v2 unless you specifically need v1 behavior."}),
                 "model_path": ("STRING", {"default": "C:/models/Ruicheng/moge-2-vitl-normal", "tooltip": "Local checkpoint folder for the selected model. If set and exists, overrides the version mapping. No network download is attempted."}),
                 "image": ("IMAGE", {"tooltip": "Input equirectangular panorama (H×W×3). Output resolution matches this input exactly."}),
-                "face_resolution": ("INT", {"default": 768, "min": 128, "max": 4096, "step": 64, "tooltip": "Per‑view render size (pixels) for each virtual camera. Higher → sharper details and smoother seams, but much more VRAM/time. Typical: 512–1024 for 4096×2048; advanced: 1536–4096 if VRAM allows."}),
+                "face_resolution": ("INT", {"default": 1024, "min": 128, "max": 4096, "step": 64, "tooltip": "Per‑view render size (pixels) for each virtual camera. Higher → sharper details and smoother seams, but much more VRAM/time. Typical: 768–1280 for 4096×2048; advanced: 1536–4096 if VRAM allows."}),
                 "resolution_level": (["Low", "Medium", "High", "Ultra"], {"default": "Ultra", "tooltip": "Internal token budget for MoGe2 (affects accuracy). Low≈fastest, Ultra≈best. Use Ultra on A600 if VRAM allows."}),
                 "view_fov_x_deg": ("INT", {"default": 110, "min": 60, "max": 120, "step": 5, "tooltip": "Horizontal FOV for virtual views. 90≈cube faces, 100–115 gives overlap for seam smoothing. Larger FOV increases overlap and robustness at the cost of distortion."}),
                 "merge_method": (["z_buffer", "weighted", "affine_depth", "poisson_depth"], {"default": "z_buffer", "tooltip": "How to combine slices: z_buffer=nearest along ray (best metric fidelity); weighted=blend 3D points; affine_depth=align per‑slice scale/bias in the pano then blend; poisson_depth=gradient‑domain depth fusion."}),
@@ -222,16 +222,18 @@ class MoGe2Panorama:
                 "horizontal_wrap": ("BOOLEAN", {"default": True, "tooltip": "Use horizontal wrap when remapping onto the pano grid (u=0/1). Keep ON for equirectangular images to avoid seam artifacts."}),
                 "skip_small_masks": ("BOOLEAN", {"default": True, "tooltip": "Skip any view whose valid mask area is tiny (e.g., blank sky). Prevents noisy slices from polluting the merge."}),
                 "min_mask_ratio": ("FLOAT", {"default": 0.005, "min": 0.0, "max": 0.1, "step": 0.001, "tooltip": "Minimum valid fraction for a view to be used. Typical 0.005–0.02 (0.5%–2%)."}),
+                "auto_relax_min_mask": ("BOOLEAN", {"default": True, "tooltip": "If too few views survive the mask filter, automatically reinstate skipped ones to keep coverage."}),
+                "min_valid_views": ("INT", {"default": 14, "min": 1, "max": 30, "step": 1, "tooltip": "Target minimum number of usable views after filtering. Auto-relax will restore skipped views until at least this many remain."}),
                 "wrap_consistency": ("BOOLEAN", {"default": True, "tooltip": "After depth fusion in image space, enforce left/right seam consistency by averaging boundary columns where both sides are valid."}),
                 "align_in_disparity": ("BOOLEAN", {"default": True, "tooltip": "affine_depth only. Fit alignment in disparity (1/depth) instead of depth. Improves cross‑slice consistency and reduces scale drift."}),
                 "polar_smooth": ("BOOLEAN", {"default": True, "tooltip": "Apply mild smoothing near the zenith/nadir to avoid spikes from equirectangular distortion."}),
-                "polar_cap_ratio": ("FLOAT", {"default": 0.06, "min": 0.0, "max": 0.2, "step": 0.005, "tooltip": "Amount of top/bottom (as H fraction) to smooth. Typical 0.04–0.10."}),
-                "polar_blur_ks": ("INT", {"default": 7, "min": 3, "max": 31, "step": 2, "tooltip": "Odd Gaussian kernel size for polar smoothing. Typical 5–13."}),
+                "polar_cap_ratio": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 0.2, "step": 0.005, "tooltip": "Amount of top/bottom (as H fraction) to smooth. Typical 0.08–0.12 for pano spikes."}),
+                "polar_blur_ks": ("INT", {"default": 9, "min": 3, "max": 31, "step": 2, "tooltip": "Odd Gaussian kernel size for polar smoothing. Typical 7–13."}),
                 "export_per_view": ("BOOLEAN", {"default": False, "tooltip": "Export each virtual view’s prediction as PLY/GLB for QA (slow; use for debugging coverage/masks)."}),
                 "per_view_export_format": (["ply", "glb", "both"], {"default": "ply", "tooltip": "Per‑view export format. PLY is lighter; GLB builds a textured triangulated mesh per view."}),
                 "per_view_prefix": ("STRING", {"default": "3D/MoGe_Pano_Views", "tooltip": "Output prefix for per‑view exports (relative to ComfyUI outputs)."}),
                 "output_pcl": ("BOOLEAN", {"default": True, "tooltip": "Export merged world‑space point cloud (.ply). Useful for quick inspection; large for big panos."}),
-                "output_glb": ("BOOLEAN", {"default": False, "tooltip": "Export textured GLB of the merged panorama mesh. Enable when you need a viewer‑ready 3D file."}),
+                "output_glb": ("BOOLEAN", {"default": True, "tooltip": "Export textured GLB of the merged panorama mesh. Disable only if you need point clouds only."}),
                 "mesh_wrap_x": ("BOOLEAN", {"default": True, "tooltip": "Close the panorama seam (u=0/1) by connecting first/last columns with duplicated UVs. Prevents visible cracks in some viewers."}),
                 "glb_rotate_x_deg": ("INT", {"default": 90, "min": -180, "max": 180, "step": 15, "tooltip": "Extra X rotation applied to the exported GLB to match viewer conventions. +90 often aligns Y‑up/Z‑forward viewers."}),
                 "filename_prefix": ("STRING", {"default": "3D/MoGe_Pano", "tooltip": "Output prefix for PLY/GLB (relative to ComfyUI outputs)."}),
@@ -239,6 +241,8 @@ class MoGe2Panorama:
                 "depth_format": (["png16", "exr", "both"], {"default": "png16", "tooltip": "Depth output format(s): png16=16‑bit millimeters (0–65535), exr=32‑bit float meters, both=write both files."}),
                 "depth_prefix": ("STRING", {"default": "3D/MoGe_Pano_Depth", "tooltip": "Output prefix for depth files (relative to ComfyUI outputs)."}),
                 "use_fp16": ("BOOLEAN", {"default": True, "tooltip": "Use mixed precision for speed/VRAM. Turn off only if you see precision artifacts on unusual hardware."}),
+                "denoise_spikes": ("BOOLEAN", {"default": True, "tooltip": "Detect and drop outlier depths before meshing to avoid spike artifacts in the GLB."}),
+                "spike_sigma": ("FLOAT", {"default": 2.5, "min": 1.0, "max": 6.0, "step": 0.5, "tooltip": "Outlier threshold in robust sigma units. Lower = more aggressive pruning."}),
             },
             "optional": {
                 "mask_image": ("IMAGE", {"tooltip": "Optional label/mask image at panorama resolution. Grayscale: each unique intensity is a label. RGB: each unique color is a label."}),
@@ -423,6 +427,16 @@ class MoGe2Panorama:
         else:
             return faces, vertices, vuv, None
 
+    def _cleanup_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """Remove basic degeneracies so exports do not contain needle spikes."""
+        try:
+            mesh.remove_degenerate_faces()
+            mesh.remove_duplicate_faces()
+            mesh.remove_unreferenced_vertices()
+        except Exception as exc:
+            log.debug("Mesh cleanup skipped: %s", exc)
+        return mesh
+
     def process(self,
                 model: str,
                 model_path: str,
@@ -440,6 +454,8 @@ class MoGe2Panorama:
                 horizontal_wrap: bool,
                 skip_small_masks: bool,
                 min_mask_ratio: float,
+                auto_relax_min_mask: bool,
+                min_valid_views: int,
                 wrap_consistency: bool,
                 align_in_disparity: bool,
                 polar_smooth: bool,
@@ -457,6 +473,8 @@ class MoGe2Panorama:
                 depth_format: str,
                 depth_prefix: str,
                 use_fp16: bool,
+                denoise_spikes: bool,
+                spike_sigma: float,
                 mask_image: Optional[Union[np.ndarray, torch.Tensor]] = None,
                 multi_glb_from_mask: bool = False,
                 mask_ignore_zero: bool = True,
@@ -492,12 +510,14 @@ class MoGe2Panorama:
 
         # Run inference per view
         res_level_int = self._get_resolution_level_int(resolution_level)
-        per_points: List[np.ndarray] = []
-        per_normals: List[Optional[np.ndarray]] = []
-        per_masks: List[np.ndarray] = []
+        num_views_total = len(view_images)
+        per_points: List[Optional[np.ndarray]] = [None] * num_views_total
+        per_normals: List[Optional[np.ndarray]] = [None] * num_views_total
+        per_masks: List[Optional[np.ndarray]] = [None] * num_views_total
         # For Poisson depth fusion (view-domain inputs)
-        view_distance_maps: List[np.ndarray] = []
-        view_pred_masks: List[np.ndarray] = []
+        view_distance_maps: List[Optional[np.ndarray]] = [None] * num_views_total
+        view_pred_masks: List[Optional[np.ndarray]] = [None] * num_views_total
+        skipped_due_to_mask: List[Dict[str, Any]] = []
         face_h, face_w = face_resolution, face_resolution
         for vi, img in enumerate(view_images):
             # prepare tensor
@@ -513,9 +533,11 @@ class MoGe2Panorama:
             # Ensure shapes
             if points is None or depth is None or mask is None:
                 # view not usable
-                per_points.append(np.full((face_h, face_w, 3), np.inf, dtype=np.float32))
-                per_normals.append(None)
-                per_masks.append(np.zeros((face_h, face_w), dtype=bool))
+                per_points[vi] = np.full((face_h, face_w, 3), np.inf, dtype=np.float32)
+                per_normals[vi] = None
+                per_masks[vi] = np.zeros((face_h, face_w), dtype=bool)
+                view_distance_maps[vi] = None
+                view_pred_masks[vi] = None
                 continue
 
             # Convert types
@@ -524,15 +546,10 @@ class MoGe2Panorama:
             if normal is not None:
                 normal = normal.astype(np.float32)
 
-            # Optionally skip views with too few valid pixels
-            if apply_mask and skip_small_masks:
-                valid_px = int(mask.sum())
-                min_px = int(face_resolution * face_resolution * float(min_mask_ratio))
-                if valid_px < max(16, min_px):
-                    per_points.append(None)
-                    per_normals.append(None)
-                    per_masks.append(None)
-                    continue
+            # Prepare distance map before mutating points
+            dist_view = np.linalg.norm(points, axis=-1).astype(np.float32)
+            if apply_mask:
+                dist_view[~mask] = 1.0
 
             # Apply mask to invalidate
             if apply_mask:
@@ -541,16 +558,31 @@ class MoGe2Panorama:
                 if normal is not None:
                     normal[invalid] = 0.0
 
-            per_points.append(points)
-            per_normals.append(normal)
-            per_masks.append(mask)
-            # Record per-view radial distance for Poisson fusion (sanitize invalid)
-            dist_view = np.linalg.norm(points, axis=-1).astype(np.float32)
-            if apply_mask:
-                # Replace invalid distances with a benign positive value; masks will exclude them later
-                dist_view[~mask] = 1.0
-            view_distance_maps.append(dist_view)
-            view_pred_masks.append(mask.astype(bool))
+            # Optionally skip views with too few valid pixels
+            if apply_mask and skip_small_masks:
+                valid_px = int(mask.sum())
+                min_px = int(face_resolution * face_resolution * float(min_mask_ratio))
+                if valid_px < max(16, min_px):
+                    if auto_relax_min_mask:
+                        skipped_due_to_mask.append({
+                            "index": vi,
+                            "points": points,
+                            "normal": normal,
+                            "mask": mask,
+                            "dist": dist_view,
+                        })
+                    per_points[vi] = None
+                    per_normals[vi] = None
+                    per_masks[vi] = None
+                    view_distance_maps[vi] = None
+                    view_pred_masks[vi] = None
+                    continue
+
+            per_points[vi] = points
+            per_normals[vi] = normal
+            per_masks[vi] = mask
+            view_distance_maps[vi] = dist_view
+            view_pred_masks[vi] = mask.astype(bool)
 
             # Optional: export per-view debug assets (PLY/GLB)
             if export_per_view:
@@ -621,12 +653,38 @@ class MoGe2Panorama:
                             ),
                             process=False,
                         )
+                        mesh = self._cleanup_mesh(mesh)
                         full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(per_view_prefix, folder_paths.get_output_directory())
                         out_path = Path(full_output_folder) / f"{filename}_{counter:05}_view{vi:02}.glb"
                         out_path.parent.mkdir(exist_ok=True, parents=True)
                         mesh.export(out_path)
                 except Exception as e:
                     log.exception("Per-view export failed for view %d: %s", vi, e)
+
+        # If mask filtering was too aggressive, optionally reinstate skipped views
+        valid_view_indices = [i for i, pts in enumerate(per_points) if pts is not None]
+        target_valid = int(np.clip(min_valid_views, 1, num_views_total))
+        if auto_relax_min_mask and skip_small_masks and len(valid_view_indices) < target_valid:
+            if skipped_due_to_mask:
+                log.info(
+                    "Auto-relaxing min_mask_ratio: only %d views survived (target %d). Reinstating %d skipped views.",
+                    len(valid_view_indices),
+                    target_valid,
+                    len(skipped_due_to_mask),
+                )
+                for rec in skipped_due_to_mask:
+                    idx = rec["index"]
+                    per_points[idx] = rec["points"]
+                    per_normals[idx] = rec["normal"]
+                    per_masks[idx] = rec["mask"]
+                    view_distance_maps[idx] = rec["dist"]
+                    view_pred_masks[idx] = rec["mask"].astype(bool)
+                valid_view_indices = [i for i, pts in enumerate(per_points) if pts is not None]
+            else:
+                log.info(
+                    "Auto-relax requested but no views were captured in the skipped cache; continuing with %d views.",
+                    len(valid_view_indices),
+                )
 
         # Prepare panorama grid and projection maps
         uv = self._image_uv(width=pano_w, height=pano_h)
@@ -824,20 +882,33 @@ class MoGe2Panorama:
                         accum_w = np.where(m, accum_w + w, accum_w)
                         pano_depth = accum_depth / (accum_w + 1e-6)
                 final_mask = accum_w > 1e-6
-            elif merge_method == 'poisson_depth' and len(view_distance_maps) > 0:
-                try:
-                    from .moge.utils.panorama import merge_panorama_depth as _merge_panorama_depth
-                    pano_depth, final_mask = _merge_panorama_depth(pano_w, pano_h, view_distance_maps, view_pred_masks, extrinsics, intrinsics_list)
-                except Exception as e:
-                    log.exception("Poisson depth merge failed, falling back to affine_depth: %s", e)
-                    # Simple fallback: average with weights
-                    accum_depth = np.zeros((pano_h, pano_w), dtype=np.float32)
-                    accum_w = np.zeros((pano_h, pano_w), dtype=np.float32)
-                    for d, m, w in zip(dist_maps, mask_maps, weight_maps):
-                        accum_depth += np.where(m, d * w, 0.0)
-                        accum_w += np.where(m, w, 0.0)
-                    pano_depth = np.where(accum_w > 0, accum_depth / (accum_w + 1e-6), 0.0).astype(np.float32)
-                    final_mask = accum_w > 0
+            elif merge_method == 'poisson_depth':
+                valid_idx = [idx for idx, d in enumerate(view_distance_maps) if d is not None and view_pred_masks[idx] is not None]
+                if len(valid_idx) > 0:
+                    try:
+                        from .moge.utils.panorama import merge_panorama_depth as _merge_panorama_depth
+                        pano_depth, final_mask = _merge_panorama_depth(
+                            pano_w,
+                            pano_h,
+                            [view_distance_maps[idx] for idx in valid_idx],
+                            [view_pred_masks[idx] for idx in valid_idx],
+                            [extrinsics[idx] for idx in valid_idx],
+                            [intrinsics_list[idx] for idx in valid_idx],
+                        )
+                    except Exception as e:
+                        log.exception("Poisson depth merge failed, falling back to affine_depth: %s", e)
+                        # Simple fallback: average with weights
+                        accum_depth = np.zeros((pano_h, pano_w), dtype=np.float32)
+                        accum_w = np.zeros((pano_h, pano_w), dtype=np.float32)
+                        for d, m, w in zip(dist_maps, mask_maps, weight_maps):
+                            accum_depth += np.where(m, d * w, 0.0)
+                            accum_w += np.where(m, w, 0.0)
+                        pano_depth = np.where(accum_w > 0, accum_depth / (accum_w + 1e-6), 0.0).astype(np.float32)
+                        final_mask = accum_w > 0
+                else:
+                    log.warning(
+                        "Poisson depth merge skipped: no valid view distance maps after filtering (auto-relax may need adjustment)."
+                    )
 
             # Optional wrap seam consistency
             if pano_depth is None:
@@ -888,6 +959,32 @@ class MoGe2Panorama:
                 export_depth_map = best_dist.copy()
             else:
                 export_depth_map = np.maximum(np.sum(best_point_world * spherical_dirs, axis=-1), 0.0)
+
+        # Optional spike rejection before hole filling / meshing
+        if denoise_spikes and best_point_world is not None and np.any(final_mask):
+            dist_map = np.linalg.norm(best_point_world, axis=-1)
+            masked = dist_map[final_mask]
+            if masked.size > 0:
+                median = float(np.median(masked))
+                mad = float(np.median(np.abs(masked - median)))
+                robust_sigma = 1.4826 * mad + 1e-6
+                threshold = median + float(spike_sigma) * robust_sigma
+                spike_mask = final_mask & (dist_map > threshold)
+                if np.any(spike_mask):
+                    removed = int(np.count_nonzero(spike_mask))
+                    log.debug(
+                        "Spike filter removed %d panorama samples (median=%.3f, sigma=%.3f, threshold=%.3f)",
+                        removed,
+                        median,
+                        robust_sigma,
+                        threshold,
+                    )
+                    best_point_world[spike_mask] = 0.0
+                    if best_normal_world is not None:
+                        best_normal_world[spike_mask] = 0.0
+                    if merge_method == 'z_buffer':
+                        best_dist[spike_mask] = np.inf
+                    final_mask[spike_mask] = False
 
         # Simple hole filling (optional)
         if fill_holes:
@@ -995,6 +1092,7 @@ class MoGe2Panorama:
                     ),
                     process=False,
                 )
+                mesh = self._cleanup_mesh(mesh)
 
                 output_glb_path = Path(full_output_folder) / f"{filename}_{counter:05}_.glb"
                 output_glb_path.parent.mkdir(exist_ok=True, parents=True)
@@ -1086,6 +1184,7 @@ class MoGe2Panorama:
                             ),
                             process=False,
                         )
+                        mesh = self._cleanup_mesh(mesh)
 
                         full_output_folder, filename2, counter2, subfolder2, _ = folder_paths.get_save_image_path(multi_glb_prefix, folder_paths.get_output_directory())
                         out_path = Path(full_output_folder) / f"{filename2}_{counter2:05}_label{int(lbl)}.glb"

@@ -6,6 +6,8 @@ The goal is to extend the zade23 ComfyUI node for MoGe2 so that it can process *
 
 ---
 
+Update 2025-10-04: Tuned panorama defaults for production GLBs. Added automatic min-mask relaxation, spike-distance filtering, seam/pole smoothing, and mesh cleanup. GLB export is on by default with wrap seam closure. README refreshed with recommended workflow.
+
 Update 2025-09-15: Implemented the panorama node with default model v2 (normals), default z-buffer merge (ray distance) for metric consistency, GLB orientation control, simple hole filling, optional per-view exports (PLY/GLB), and a synthetic validation script. Fixed a rotation-order bug that caused per-segment misalignment. Added depth-image fusion options (`affine_depth` with disparity-based alignment; `poisson_depth`) and seam/pole handling. Added optional mask-based multi-GLB export to split the final panorama mesh into labeled parts.
 
 ## Background & Key Features of MoGe-2 & infer_panorama.py
@@ -131,22 +133,24 @@ Here’s a task breakdown that Codex / agent might perform in order:
   - New: `mesh_wrap_x` closes the equirectangular seam by adding faces between the first and last columns with duplicated UVs to avoid texture interpolation issues.
   - New: Depth file export via `export_depth` + `depth_format` (`png16` in millimeters, `exr` float, or `both`), with `depth_prefix` for output path.
 - Parameters:
-  - `model` (enum: v1/v2, default v2): select MoGe version (panorama prefers v2 for metric scale and normals).
+- `model` (enum: v1/v2, default v2): select MoGe version (panorama prefers v2 for metric scale and normals).
   - `model_path` (string, optional, local): local checkpoint path that overrides the version mapping when present.
-  - `face_resolution` (int, default 512): resolution of each virtual view (icosahedron faces).
+  - `face_resolution` (int, default 1024): resolution of each virtual view (icosahedron faces). Higher improves seams; mind VRAM.
   - `resolution_level` (enum): forwarded to the model to control token count.
   - `merge_method` (enum): default `z_buffer` (metric preserving). Optionally expose `poisson` later.
   - `apply_mask` (bool): apply model’s validity mask.
-  - `view_fov_x_deg` (int): per-view FOV to control overlap (smoother seams with more overlap).
-  - `merge_method` (enum): `weighted` (default) or `z_buffer`.
+  - `view_fov_x_deg` (int, default 110): per-view FOV to control overlap; 110° gives healthy coverage.
+  - `merge_method` (enum): `z_buffer` default for metric; `weighted`, `affine_depth`, `poisson_depth` available when smoothing is needed.
   - `angle_power`, `depth_alpha`: weights for `weighted` blend.
+  - `auto_relax_min_mask` (bool, default True) + `min_valid_views` (default 14): reinstates skipped views if coverage drops.
+  - `denoise_spikes` (bool, default True) + `spike_sigma` (default 2.5): removes ray-distance outliers before meshing.
   - `fill_holes` (bool) and `hole_iters` (int): simple neighbor-average hole filling.
   - `horizontal_wrap` (bool): use horizontal wrap border in pano remap for edge-case debugging.
   - `export_per_view` (bool): export each per-view prediction for debugging.
   - `per_view_export_format` (enum): `ply`, `glb`, or `both` for per-view exports.
   - `per_view_prefix` (string): prefix/path for per-view exports.
   - `output_pcl` (bool): whether to write out a PLY point cloud.
-  - `output_glb` (bool): whether to write out a textured GLB mesh.
+  - `output_glb` (bool, default True): whether to write out a textured GLB mesh (uses seam-closing mesh builder and cleanup).
   - `glb_rotate_x_deg` (int): extra rotation around X axis for GLB viewers.
   - `filename_prefix` (string): export prefix/path.
   - `use_fp16` (bool): enable FP16 inference for speed/VRAM.
