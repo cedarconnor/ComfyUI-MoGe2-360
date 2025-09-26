@@ -51,6 +51,15 @@ Run ComfyUI → `Manager` → `Custom Nodes Manager` → search and install `Com
   - `polar_smooth = True`, `polar_cap_ratio = 0.10`, `polar_blur_ks = 9`: calms zenith/nadir spikes in GLBs.
   - `denoise_spikes = True`, `spike_sigma = 2.5`: removes stray ray-distance outliers before meshing.
   - `output_glb = True`, `mesh_wrap_x = True`, `glb_rotate_x_deg = 90`: exports a ready-to-view GLB with seam closure and viewer-friendly orientation.
+- Seam and spike troubleshooting:
+  - Switch to `merge_method = weighted` (optionally `affine_depth`) when you need per-view scale harmonisation before blending. Pair with `angle_power = 2–4` and `depth_alpha = 0.3–0.7` so centre pixels dominate across overlaps.
+  - Increase `view_fov_x_deg` toward 115–118° plus `face_resolution` ≥ 1280 for more overlap and smoother seams on high-contrast structures. Higher values cost VRAM/time but reduce slice-to-slice jumps.
+  - Keep `denoise_spikes = True` and raise `spike_sigma` to 3.0–3.5 for aggressive ray-distance outlier removal that prevents radial “fins” in the final mesh.
+  - Leave `auto_relax_min_mask = True` and bump `min_valid_views` (e.g. 18) if large masked regions collapse coverage. This automatically loosens masks when too many slices get skipped.
+  - Retain `fill_holes = True` with `hole_iters = 2–3` to close small invalid gaps without blurring geometry. For stubborn seams enable `horizontal_wrap` during remap to borrow wrapped texels at the panorama seam.
+  - For final polishing try `merge_method = poisson_depth` after a clean z-buffer pass; it solves depth gradients for smooth seams while respecting metric distances.
+  - Enable `export_per_view = True` when debugging to inspect per-camera PLY/GLB outputs and compare against the merged panorama.
+  - Stick with `model = v2` for normals and metric scale; v1 lacks normals and is only recommended when VRAM is extremely limited.
 - Other key controls:
   - `skip_small_masks` + `min_mask_ratio`: still reject tiny/noisy views; auto relax backfills if too many are skipped.
   - `fill_holes`/`hole_iters`: fills isolated gaps post-merge (defaults keep seams tight without softening geometry).
@@ -98,3 +107,4 @@ Example workflow: `example_workflows/MoGe2Panorama.json`
 ## Acknowledgements
 
 I would like to thank the contributors to the [MoGe](https://github.com/microsoft/MoGe), [ComfyUI-MoGe](https://github.com/kijia), for their open research.
+
