@@ -44,7 +44,7 @@ class RunMoGe2Process:
     RETURN_TYPES = ("IMAGE", "IMAGE","STRING")
     RETURN_NAMES = ("depth", "normal", "glb_path")
     FUNCTION = "process"
-    CATEGORY = "MoGe2"
+    CATEGORY = "MoGe2-360"
     OUTPUT_NODE = True
     DESCRIPTION = "Runs the MoGe2 model on the input image. \n v1: Ruicheng/moge-vitl \n v2: Ruicheng/moge-2-vitl-normal"
     
@@ -256,7 +256,7 @@ class MoGe2Panorama:
     RETURN_TYPES = ("IMAGE", "IMAGE", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("depth", "normal", "pcl_path", "glb_path", "depth_file")
     FUNCTION = "process"
-    CATEGORY = "MoGe2"
+    CATEGORY = "MoGe2-360"
     OUTPUT_NODE = True
     DESCRIPTION = "MoGe-2 panorama inference with metric-preserving merge (z-buffer default)."
 
