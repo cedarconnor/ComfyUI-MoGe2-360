@@ -1,18 +1,161 @@
 {
-  "id": "1e9a0e9f-1b2a-4b5e-8c4a-5a6b7c8d9e0f",
+  "id": "0926a083-c1c4-48bb-aea9-4b938e9edd9e",
   "revision": 0,
-  "last_node_id": 6,
-  "last_link_id": 6,
+  "last_node_id": 11,
+  "last_link_id": 29,
   "nodes": [
     {
-      "id": 1,
-      "type": "LoadImage",
+      "id": 5,
+      "type": "Preview3D",
       "pos": [
-        560,
-        560
+        2315.106201171875,
+        -60.82759094238281
       ],
       "size": [
-        274,
+        339.7372741699219,
+        380.2227478027344
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "camera_info",
+          "shape": 7,
+          "type": "LOAD3D_CAMERA",
+          "link": null
+        },
+        {
+          "name": "model_file",
+          "type": "STRING",
+          "widget": {
+            "name": "model_file"
+          },
+          "link": 29
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.45",
+        "Node name for S&R": "Preview3D",
+        "Last Time Model File": "3D/MoGe_Pano_00031_.ply",
+        "Camera Info": {
+          "position": {
+            "x": -0.05824729298352651,
+            "y": 0.106276039689162,
+            "z": 11.1836740718856
+          },
+          "target": {
+            "x": 0,
+            "y": 2.071458937139295,
+            "z": 0
+          },
+          "zoom": 1,
+          "cameraType": "perspective"
+        },
+        "Resource Folder": "ComfyUI/output/3D"
+      },
+      "widgets_values": [
+        "3D/MoGe_Pano_00031_.ply",
+        ""
+      ]
+    },
+    {
+      "id": 4,
+      "type": "PreviewImage",
+      "pos": [
+        2270.26025390625,
+        397.653076171875
+      ],
+      "size": [
+        461.4935302734375,
+        619.1354370117188
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 26
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 6,
+      "type": "Preview3D",
+      "pos": [
+        2762.53173828125,
+        -34.71720886230469
+      ],
+      "size": [
+        1006.9518432617188,
+        864.9512939453125
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "camera_info",
+          "shape": 7,
+          "type": "LOAD3D_CAMERA",
+          "link": null
+        },
+        {
+          "name": "model_file",
+          "type": "STRING",
+          "widget": {
+            "name": "model_file"
+          },
+          "link": 28
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.45",
+        "Node name for S&R": "Preview3D",
+        "Last Time Model File": "3D/MoGe_Pano_00031_.glb",
+        "Camera Info": {
+          "position": {
+            "x": 3.6274584276393034,
+            "y": 2.868580057000475,
+            "z": 5.60821456568573
+          },
+          "target": {
+            "x": 5.78455128141689e-150,
+            "y": 1.6134189724759431,
+            "z": 2.4674947517215784e-149
+          },
+          "zoom": 1,
+          "cameraType": "perspective"
+        },
+        "Resource Folder": "ComfyUI/output/3D"
+      },
+      "widgets_values": [
+        "3D/MoGe_Pano_00031_.glb",
+        ""
+      ]
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        1486.1478271484375,
+        -2.7206387519836426
+      ],
+      "size": [
+        274.080078125,
         314
       ],
       "flags": {},
@@ -24,7 +167,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            1
+            25
           ]
         },
         {
@@ -35,109 +178,24 @@
       ],
       "properties": {
         "cnr_id": "comfy-core",
-        "ver": "0.3.45",
+        "ver": "0.3.59",
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "example.png",
+        "monkstown_castle_4k.jpg",
         "image"
-      ]
-    },
-    {
-      "id": 2,
-      "type": "MoGe2Panorama",
-      "pos": [
-        890,
-        580
-      ],
-      "size": [
-        310,
-        270
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 1
-        }
-      ],
-      "outputs": [
-        {
-          "name": "depth",
-          "type": "IMAGE",
-          "links": [
-            2
-          ]
-        },
-        {
-          "name": "normal",
-          "type": "IMAGE",
-          "links": [
-            3
-          ]
-        },
-        {
-          "name": "pcl_path",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "MoGe2Panorama"
-      },
-      "widgets_values": [
-        "C:/models/Ruicheng/moge-2-vitl-normal",
-        512,
-        "High",
-        "z_buffer",
-        true,
-        true,
-        "3D/MoGe_Pano",
-        true
       ]
     },
     {
       "id": 3,
       "type": "PreviewImage",
       "pos": [
-        1220,
-        480
+        1465.8310546875,
+        436.8865966796875
       ],
       "size": [
-        316,
-        352
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 2
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.3.45",
-        "Node name for S&R": "PreviewImage"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 4,
-      "type": "PreviewImage",
-      "pos": [
-        1220,
-        740
-      ],
-      "size": [
-        316,
-        352
+        448.439697265625,
+        517.7720336914062
       ],
       "flags": {},
       "order": 3,
@@ -146,133 +204,185 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 3
+          "link": 27
         }
       ],
       "outputs": [],
       "properties": {
         "cnr_id": "comfy-core",
-        "ver": "0.3.45",
+        "ver": "0.3.59",
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": []
     },
     {
-      "id": 5,
-      "type": "SaveImage",
+      "id": 11,
+      "type": "MoGe2Panorama",
       "pos": [
-        1220,
-        1060
+        1955.6099853515625,
+        32.553951263427734
       ],
       "size": [
-        315,
-        114
+        292.73046875,
+        1074
       ],
       "flags": {},
-      "order": 4,
+      "order": 1,
       "mode": 0,
       "inputs": [
         {
-          "name": "images",
+          "name": "image",
           "type": "IMAGE",
-          "link": 5
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.3.45",
-        "Node name for S&R": "SaveImage"
-      },
-      "widgets_values": [
-        "MoGe2Pano_Depth"
-      ]
-    },
-    {
-      "id": 6,
-      "type": "SaveImage",
-      "pos": [
-        1540,
-        1060
-      ],
-      "size": [
-        315,
-        114
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
+          "link": 25
+        },
         {
-          "name": "images",
+          "name": "mask_image",
+          "shape": 7,
           "type": "IMAGE",
-          "link": 6
+          "link": null
         }
       ],
-      "outputs": [],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [
+            26
+          ]
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [
+            27
+          ]
+        },
+        {
+          "name": "pcl_path",
+          "type": "STRING",
+          "links": [
+            29
+          ]
+        },
+        {
+          "name": "glb_path",
+          "type": "STRING",
+          "links": [
+            28
+          ]
+        },
+        {
+          "name": "depth_file",
+          "type": "STRING",
+          "links": null
+        }
+      ],
       "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.3.45",
-        "Node name for S&R": "SaveImage"
+        "aux_id": "cedarconnor/ComfyUI-MoGe2-360",
+        "ver": "80eafb79924c0a6d652560ce5ab1277a96baa965",
+        "Node name for S&R": "MoGe2Panorama"
       },
       "widgets_values": [
-        "MoGe2Pano_Normal"
+        "v2",
+        "C:\\ComfyUI\\models\\Ruicheng\\moge-2-vitl-normal.pt",
+        1280,
+        "Ultra",
+        115,
+        "affine_depth",
+        "ray",
+        3,
+        0.3,
+        true,
+        1,
+        true,
+        true,
+        true,
+        0.005,
+        true,
+        14,
+        true,
+        true,
+        true,
+        0.1,
+        9,
+        false,
+        "ply",
+        "3D/MoGe_Pano_Views",
+        true,
+        true,
+        true,
+        -90,
+        "3D/MoGe_Pano",
+        false,
+        "png16",
+        "3D/MoGe_Pano_Depth",
+        true,
+        true,
+        4,
+        false,
+        true,
+        0.005,
+        "3D/MoGe_Pano_Label"
       ]
     }
   ],
   "links": [
     [
-      1,
-      1,
-      0,
+      25,
       2,
       0,
-      "IMAGE"
-    ],
-    [
-      2,
-      2,
-      0,
-      3,
+      11,
       0,
       "IMAGE"
     ],
     [
-      3,
-      2,
-      1,
+      26,
+      11,
+      0,
       4,
       0,
       "IMAGE"
     ],
     [
-      5,
-      2,
-      0,
-      5,
+      27,
+      11,
+      1,
+      3,
       0,
       "IMAGE"
     ],
     [
+      28,
+      11,
+      3,
       6,
-      2,
       1,
-      6,
-      0,
-      "IMAGE"
+      "STRING"
+    ],
+    [
+      29,
+      11,
+      2,
+      5,
+      1,
+      "STRING"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1,
+      "scale": 0.41553301527421277,
       "offset": [
-        0,
-        0
+        -1047.1693324030691,
+        247.64918107245944
       ]
     },
-    "frontendVersion": "1.23.4"
+    "frontendVersion": "1.27.10",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
   },
   "version": 0.4
 }

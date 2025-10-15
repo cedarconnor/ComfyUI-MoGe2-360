@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nChange category from MoGe2 to MoGe2-360\n\nUpdate CATEGORY field in both RunMoGe2Process and MoGe2Panorama nodes to display as \"MoGe2-360\" in ComfyUI node browser instead of just \"MoGe2\".\nEOF\n)\")",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
