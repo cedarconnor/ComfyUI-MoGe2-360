@@ -455,35 +455,35 @@ class MoGe2Panorama:
     def INPUT_TYPES(s):
         return {
             "required": {
-                # === Model Settings ===
+                "header_model": ("STRING", {"default": "▼ Model Settings", "multiline": False}),
                 "model": (["v1", "v2"], {"default": "v2", "tooltip": "MoGe checkpoint to load. v2 is recommended (normals + metric scale); switch to v1 only when VRAM is tight and you do not need normals."}),
                 "model_path": ("STRING", {"default": "models/Ruicheng/moge-2-vitl-normal.pt", "tooltip": "Relative path from ComfyUI root to model weights. Default: models/Ruicheng/moge-2-vitl-normal.pt"}),
                 "image": ("IMAGE", {"tooltip": "Input equirectangular panorama (HxW). The merged outputs keep this exact resolution."}),
                 "use_fp16": ("BOOLEAN", {"default": True, "tooltip": "Run inference in mixed precision. Keep enabled for speed unless you suspect numerical issues on specific hardware."}),
                 "resolution_level": (["Low", "Medium", "High", "Ultra"], {"default": "Ultra", "tooltip": "MoGe inference granularity. Low/Medium for quick previews, High for production, Ultra for the sharpest geometry (heaviest VRAM)."}),
 
-                # === Panorama Splitting ===
+                "header_split": ("STRING", {"default": "▼ Panorama Splitting", "multiline": False}),
                 "face_resolution": ("INT", {"default": 1024, "min": 128, "max": 4096, "step": 64, "tooltip": "Per-view render size. Raise (1280-1536) for cleaner seams/fine detail when VRAM allows; lower for faster drafts or low-memory GPUs."}),
                 "view_fov_x_deg": ("INT", {"default": 110, "min": 60, "max": 120, "step": 5, "tooltip": "Horizontal FOV per virtual camera. Use 105-115 for dependable overlap; drop toward 90 only when you want cube-face coverage; push to 115-118 if you still see seam gaps."}),
 
-                # === Merge Strategy ===
+                "header_merge": ("STRING", {"default": "▼ Merge Strategy", "multiline": False}),
                 "merge_method": (["z_buffer", "weighted", "affine_depth", "poisson_depth"], {"default": "z_buffer", "tooltip": "How to stitch per-view geometry. z_buffer keeps the first physical hit (best metric fidelity). Weighted/affine/poisson blend slices and are useful only after coverage is clean when you want softer seams."}),
                 "zbuffer_mode": (["ray", "radial"], {"default": "ray", "tooltip": "Distance metric for z-buffer. ray compares signed distance along each panorama ray (best for seams); radial uses ||P|| and can help when your per-view origins drift."}),
                 "normal_mode": (["auto", "internal_only", "external_only", "external_fallback"], {"default": "auto", "tooltip": "Choose where normals come from. auto prefers external normals if connected, internal_only ignores them, external_only requires them, external_fallback uses external normals per view but falls back to MoGe when a slice is missing."}),
 
-                # === Weighted Merge Options (weighted/affine/poisson only) ===
+                "header_weighted": ("STRING", {"default": "▼ Weighted Merge Options", "multiline": False}),
                 "angle_power": ("FLOAT", {"default": 2.0, "min": 0.0, "max": 8.0, "step": 0.5, "tooltip": "Only used by weighted/affine/poisson. Higher values (2-4) prioritize view centers; set 0 to disable angle weighting when experimenting."}),
                 "depth_alpha": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "Only used by weighted/affine/poisson. >0 down-weights far geometry (start around 0.3) to reduce ghosting across overlaps."}),
                 "align_in_disparity": ("BOOLEAN", {"default": True, "tooltip": "affine_depth only. Align slices in disparity (1/depth) which maintains scale better. Turn OFF to experiment with plain depth alignment."}),
 
-                # === View Filtering & Masking ===
+                "header_filtering": ("STRING", {"default": "▼ View Filtering & Masking", "multiline": False}),
                 "apply_mask": ("BOOLEAN", {"default": True, "tooltip": "Honor MoGe's per-view validity mask. Disable only for debugging, otherwise invalid pixels will pollute the merge."}),
                 "skip_small_masks": ("BOOLEAN", {"default": True, "tooltip": "Reject slices whose valid region is tiny (often blank sky). Disable only when most views are genuinely sparse and you still want them merged."}),
                 "min_mask_ratio": ("FLOAT", {"default": 0.005, "min": 0.0, "max": 0.1, "step": 0.001, "tooltip": "Minimum valid-pixel fraction for a slice to survive filtering. Use 0.003-0.005 for indoor scenes; drop toward 0.001 for outdoor skies."}),
                 "auto_relax_min_mask": ("BOOLEAN", {"default": True, "tooltip": "If filtering leaves fewer than min_valid_views, automatically re-enable skipped slices (useful when big sky regions blow out the mask). Turn OFF for deterministic filtering."}),
                 "min_valid_views": ("INT", {"default": 14, "min": 1, "max": 30, "step": 1, "tooltip": "Minimum number of slices to keep after masking. Raise this when you upscale face_resolution/FOV so the auto-relax logic has stricter coverage goals."}),
 
-                # === Depth Processing ===
+                "header_depth": ("STRING", {"default": "▼ Depth Processing", "multiline": False}),
                 "depth_alignment": ("BOOLEAN", {"default": True, "tooltip": "Align each virtual view's depth scale to the accumulated panorama using a robust scale fit. Only active for radial zbuffer mode. Disable if alignment causes visible jitter."}),
                 "alignment_quantile": ("FLOAT", {"default": 0.12, "min": 0.0, "max": 0.45, "step": 0.01, "tooltip": "Quantile range for trimming ratio outliers when estimating alignment scale (lower = focus on closer structures)."}),
                 "alignment_max_scale": ("FLOAT", {"default": 3.0, "min": 1.0, "max": 10.0, "step": 0.5, "tooltip": "Clamp on the scale factor applied during alignment to avoid extreme rescaling. Applied symmetrically as 1/scale."}),
@@ -492,7 +492,7 @@ class MoGe2Panorama:
                 "denoise_spikes": ("BOOLEAN", {"default": True, "tooltip": "Detect and drop extreme ray-distance outliers before meshing so the GLB does not sprout spikes. Disable only if thin geometry is being mistaken for spikes."}),
                 "spike_sigma": ("FLOAT", {"default": 2.5, "min": 1.0, "max": 6.0, "step": 0.5, "tooltip": "Threshold (in robust sigma units) used by spike removal. Increase to keep more data; decrease to prune aggressive outliers."}),
 
-                # === Post-Processing ===
+                "header_postproc": ("STRING", {"default": "▼ Post-Processing", "multiline": False}),
                 "fill_holes": ("BOOLEAN", {"default": True, "tooltip": "After merging, fill isolated invalid pixels with neighbor averages. Leave ON for watertight meshes; disable if you prefer the raw mask."}),
                 "hole_iters": ("INT", {"default": 2, "min": 0, "max": 5, "step": 1, "tooltip": "Number of hole-fill passes. 1-2 keeps detail; values >2 start to blur thin structures."}),
                 "smooth_mesh_mask": ("BOOLEAN", {"default": True, "tooltip": "Morphologically smooth the final valid mask before meshing to suppress pixel-scale spikes/holes."}),
@@ -503,7 +503,7 @@ class MoGe2Panorama:
                 "horizontal_wrap": ("BOOLEAN", {"default": True, "tooltip": "Wrap the pano seam when remapping. Switch OFF only when diagnosing seam issues or processing a non-wrapping projection."}),
                 "wrap_consistency": ("BOOLEAN", {"default": True, "tooltip": "Average the first/last panorama columns when both are valid to enforce seam continuity. Disable if you need to inspect the raw seam difference."}),
 
-                # === Export Settings ===
+                "header_export": ("STRING", {"default": "▼ Export Settings", "multiline": False}),
                 "output_pcl": ("BOOLEAN", {"default": True, "tooltip": "Export the merged world-space point cloud (.ply). Disable if you only need the mesh or are trying to save disk space."}),
                 "output_glb": ("BOOLEAN", {"default": True, "tooltip": "Export the merged textured GLB. Turn OFF when you want geometry-free depth/normal outputs or are running analysis-only jobs."}),
                 "mesh_wrap_x": ("BOOLEAN", {"default": True, "tooltip": "Connect the panorama seam when generating the mesh so GLB viewers do not show a crack. Disable if you need an open seam for downstream editing."}),
@@ -513,7 +513,7 @@ class MoGe2Panorama:
                 "depth_format": (["png16", "exr", "both"], {"default": "png16", "tooltip": "Choose the on-disk depth format: png16 writes millimeters as 16-bit, exr writes meters as float32, both writes both versions."}),
                 "depth_prefix": ("STRING", {"default": "3D/MoGe_Pano_Depth", "tooltip": "Output prefix for saved depth files."}),
 
-                # === Debug / Advanced ===
+                "header_debug": ("STRING", {"default": "▼ Debug / Advanced", "multiline": False}),
                 "export_per_view": ("BOOLEAN", {"default": False, "tooltip": "Write each virtual view as a debug export. Enable when diagnosing coverage or normals; disable for production runs to save time and disk."}),
                 "per_view_export_format": (["ply", "glb", "both"], {"default": "ply", "tooltip": "Format for per-view exports. PLY gives lightweight point clouds; GLB builds textured meshes; both writes both (slow)."}),
                 "per_view_prefix": ("STRING", {"default": "3D/MoGe_Pano_Views", "tooltip": "Output prefix for per-view debug exports inside the ComfyUI output directory."}),
@@ -773,40 +773,48 @@ class MoGe2Panorama:
         return mesh
 
     def process(self,
+                header_model: str,
                 model: str,
                 model_path: str,
                 image,
-                face_resolution: int,
+                use_fp16: bool,
                 resolution_level: str,
+                header_split: str,
+                face_resolution: int,
                 view_fov_x_deg: int,
+                header_merge: str,
                 merge_method: str,
-                normal_mode: str,
                 zbuffer_mode: str,
+                normal_mode: str,
+                header_weighted: str,
                 angle_power: float,
                 depth_alpha: float,
-                fill_holes: bool,
-                hole_iters: int,
+                align_in_disparity: bool,
+                header_filtering: str,
                 apply_mask: bool,
-                horizontal_wrap: bool,
                 skip_small_masks: bool,
                 min_mask_ratio: float,
                 auto_relax_min_mask: bool,
                 min_valid_views: int,
-                wrap_consistency: bool,
-                align_in_disparity: bool,
+                header_depth: str,
                 depth_alignment: bool,
                 alignment_quantile: float,
                 alignment_max_scale: float,
                 compress_depth: bool,
                 depth_compression_quantile: float,
+                denoise_spikes: bool,
+                spike_sigma: float,
+                header_postproc: str,
+                fill_holes: bool,
+                hole_iters: int,
                 smooth_mesh_mask: bool,
                 mesh_mask_kernel: int,
                 polar_smooth: bool,
                 polar_cap_ratio: float,
                 polar_blur_ks: int,
-                export_per_view: bool,
-                per_view_export_format: str,
-                per_view_prefix: str,
+                horizontal_wrap: bool,
+                wrap_consistency: bool,
+                header_export: str,
                 output_pcl: bool,
                 output_glb: bool,
                 mesh_wrap_x: bool,
@@ -815,9 +823,10 @@ class MoGe2Panorama:
                 export_depth: bool,
                 depth_format: str,
                 depth_prefix: str,
-                use_fp16: bool,
-                denoise_spikes: bool,
-                spike_sigma: float,
+                header_debug: str,
+                export_per_view: bool,
+                per_view_export_format: str,
+                per_view_prefix: str,
                 view_package: Optional[Dict[str, Any]] = None,
                 external_normals: Optional[Dict[str, Any]] = None,
                 mask_image: Optional[Union[np.ndarray, torch.Tensor]] = None,
@@ -826,6 +835,9 @@ class MoGe2Panorama:
                 min_label_area_ratio: float = 0.005,
                 multi_glb_prefix: str = "3D/MoGe_Pano_Label",
                 ) -> Tuple[torch.Tensor, torch.Tensor, str, str, str]:
+        # Ignore header parameters (they're just visual separators)
+        _ = (header_model, header_split, header_merge, header_weighted, header_filtering,
+             header_depth, header_postproc, header_export, header_debug)
 
         # Resolve model path from version unless an override path is provided
         version_to_default_local = {
