@@ -10,6 +10,7 @@ Huggingface demo: https://huggingface.co/spaces/Ruicheng/MoGe-2
 
 ## Updates
 
+- [2025-01-19] **Critical slice alignment fixes**: Fixed z-buffer ray-distance validation (negative distances were breaking merge), disabled depth_alignment for ray mode (was causing order-dependent scale drift), added robust point magnitude filtering (rejects interpolation artifacts), and ensured borderMode consistency for normal remaps. These changes dramatically improve seam quality and eliminate slice misalignment artifacts.
 - [2025-10-04] Panorama defaults tuned for clean GLBs: auto mask-relaxation, spike denoising, seam/pole smoothing, mesh cleanup, and GLB export enabled by default. README/Agents updated with recommended workflow.
 - [2025-09-15] Panorama mode: default model `v2` with normals; default z-buffer merge (ray distance) for strongest metric consistency; GLB extra rotation option; hole filling; per-view exports; synthetic validation script; fixed segment misalignment (rotation order).
 - [2025-07-29] Support `Ruicheng/moge-2-vitl-normal` and `Ruicheng/moge-vitl` model.
