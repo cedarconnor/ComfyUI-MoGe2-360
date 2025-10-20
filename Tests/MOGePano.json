@@ -1,0 +1,767 @@
+{
+  "id": "0926a083-c1c4-48bb-aea9-4b938e9edd9e",
+  "revision": 0,
+  "last_node_id": 22,
+  "last_link_id": 55,
+  "nodes": [
+    {
+      "id": 6,
+      "type": "Preview3D",
+      "pos": [
+        2757.29638671875,
+        -94.04519653320312
+      ],
+      "size": [
+        1006.9518432617188,
+        864.9512939453125
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "camera_info",
+          "shape": 7,
+          "type": "LOAD3D_CAMERA",
+          "link": null
+        },
+        {
+          "name": "model_file",
+          "type": "STRING",
+          "widget": {
+            "name": "model_file"
+          },
+          "link": 55
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.45",
+        "Node name for S&R": "Preview3D",
+        "Last Time Model File": "3D/MoGe_Pano_00075_.glb",
+        "Camera Info": {
+          "position": {
+            "x": 9.426702693193292,
+            "y": 3.8197180658459278,
+            "z": -6.608958065080935
+          },
+          "target": {
+            "x": 0,
+            "y": 1.4306222621640088,
+            "z": 0
+          },
+          "zoom": 1,
+          "cameraType": "perspective"
+        },
+        "Resource Folder": "ComfyUI/output/3D"
+      },
+      "widgets_values": [
+        "3D/MoGe_Pano_00075_.glb",
+        ""
+      ]
+    },
+    {
+      "id": 16,
+      "type": "VAEEncode",
+      "pos": [
+        430.917236328125,
+        145.92318725585938
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixels",
+          "type": "IMAGE",
+          "link": 47
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            37
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.65",
+        "Node name for S&R": "VAEEncode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 19,
+      "type": "VAEDecode",
+      "pos": [
+        1275.3392333984375,
+        32.96955108642578
+      ],
+      "size": [
+        210,
+        46
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 38
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 39
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            41,
+            45
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.65",
+        "Node name for S&R": "VAEDecode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 20,
+      "type": "PreviewImage",
+      "pos": [
+        1490.64697265625,
+        197.986083984375
+      ],
+      "size": [
+        140,
+        246.00001525878906
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 45
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.65",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 18,
+      "type": "LotusSampler",
+      "pos": [
+        880.3167114257812,
+        13.493644714355469
+      ],
+      "size": [
+        315,
+        150
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "lotus_unet",
+          "type": "LOTUSUNET",
+          "link": 36
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 37
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "slot_index": 0,
+          "links": [
+            38
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "ComfyUI-Lotus",
+        "ver": "dcd5bea7a418717a6e0c27a5f607058cb9c24a5e",
+        "Node name for S&R": "LotusSampler"
+      },
+      "widgets_values": [
+        4122242638,
+        "randomize",
+        12,
+        false
+      ]
+    },
+    {
+      "id": 17,
+      "type": "VAELoader",
+      "pos": [
+        -3.1297295093536377,
+        435.04840087890625
+      ],
+      "size": [
+        315,
+        58
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            35,
+            39
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.65",
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "vae-ft-mse-840000-ema-pruned.safetensors"
+      ]
+    },
+    {
+      "id": 15,
+      "type": "LoadLotusModel",
+      "pos": [
+        440.51397705078125,
+        -9.131610870361328
+      ],
+      "size": [
+        315,
+        82
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "lotus_unet",
+          "type": "LOTUSUNET",
+          "slot_index": 0,
+          "links": [
+            36
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "ComfyUI-Lotus",
+        "ver": "dcd5bea7a418717a6e0c27a5f607058cb9c24a5e",
+        "Node name for S&R": "LoadLotusModel"
+      },
+      "widgets_values": [
+        "lotus-normal-g-v1-0-fp16.safetensors",
+        "fp16"
+      ]
+    },
+    {
+      "id": 22,
+      "type": "MoGe2PanoramaSplit",
+      "pos": [
+        94.57829284667969,
+        -240.4178466796875
+      ],
+      "size": [
+        270,
+        126
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 46
+        }
+      ],
+      "outputs": [
+        {
+          "name": "view_images",
+          "type": "IMAGE",
+          "links": [
+            47
+          ]
+        },
+        {
+          "name": "view_package",
+          "type": "PANORAMA_VIEWS",
+          "links": [
+            48,
+            49
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "cedarconnor/ComfyUI-MoGe2-360",
+        "ver": "666e989e1d3b4e2dfc5585ec5bd447af8af57901",
+        "Node name for S&R": "MoGe2PanoramaSplit"
+      },
+      "widgets_values": [
+        1024,
+        110,
+        true
+      ]
+    },
+    {
+      "id": 14,
+      "type": "MoGe2PanoramaNormalsPack",
+      "pos": [
+        1514.2969970703125,
+        -44.13226318359375
+      ],
+      "size": [
+        305.3130798339844,
+        174
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "view_package",
+          "type": "PANORAMA_VIEWS",
+          "link": 49
+        },
+        {
+          "name": "normal_images",
+          "type": "IMAGE",
+          "link": 41
+        }
+      ],
+      "outputs": [
+        {
+          "name": "external_normals",
+          "type": "PANORAMA_NORMALS",
+          "links": [
+            51
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "cedarconnor/ComfyUI-MoGe2-360",
+        "ver": "666e989e1d3b4e2dfc5585ec5bd447af8af57901",
+        "Node name for S&R": "MoGe2PanoramaNormalsPack"
+      },
+      "widgets_values": [
+        "signed",
+        true,
+        true,
+        false,
+        "external"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        -217.1974334716797,
+        -320.232666015625
+      ],
+      "size": [
+        274.080078125,
+        314
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            46,
+            52
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "modern_evening_street_4k.png",
+        "image"
+      ]
+    },
+    {
+      "id": 21,
+      "type": "MoGe2Panorama",
+      "pos": [
+        1890.927001953125,
+        -61.579612731933594
+      ],
+      "size": [
+        317.439453125,
+        1266
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 52
+        },
+        {
+          "name": "mask_image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "view_package",
+          "shape": 7,
+          "type": "PANORAMA_VIEWS",
+          "link": 48
+        },
+        {
+          "name": "external_normals",
+          "shape": 7,
+          "type": "PANORAMA_NORMALS",
+          "link": 51
+        }
+      ],
+      "outputs": [
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": [
+            53
+          ]
+        },
+        {
+          "name": "normal",
+          "type": "IMAGE",
+          "links": [
+            54
+          ]
+        },
+        {
+          "name": "pcl_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "glb_path",
+          "type": "STRING",
+          "links": [
+            55
+          ]
+        },
+        {
+          "name": "depth_file",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "cedarconnor/ComfyUI-MoGe2-360",
+        "ver": "666e989e1d3b4e2dfc5585ec5bd447af8af57901",
+        "Node name for S&R": "MoGe2Panorama"
+      },
+      "widgets_values": [
+        "v2",
+        "C:\\ComfyUI\\models\\Ruicheng\\moge-2-vitl-normal.pt",
+        1024,
+        "Ultra",
+        110,
+        "z_buffer",
+        "auto",
+        "ray",
+        2,
+        0,
+        true,
+        2,
+        true,
+        true,
+        true,
+        0.005,
+        true,
+        14,
+        true,
+        true,
+        true,
+        0.12,
+        3,
+        true,
+        0.97,
+        true,
+        3,
+        true,
+        0.1,
+        9,
+        false,
+        "ply",
+        "3D/MoGe_Pano_Views",
+        true,
+        true,
+        true,
+        -90,
+        "3D/MoGe_Pano",
+        false,
+        "png16",
+        "3D/MoGe_Pano_Depth",
+        true,
+        true,
+        2.5,
+        false,
+        true,
+        0.005,
+        "3D/MoGe_Pano_Label"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "PreviewImage",
+      "pos": [
+        2249.0712890625,
+        553.8770751953125
+      ],
+      "size": [
+        448.439697265625,
+        517.7720336914062
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 54
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 4,
+      "type": "PreviewImage",
+      "pos": [
+        2247.94140625,
+        -127.62107849121094
+      ],
+      "size": [
+        461.4935302734375,
+        619.1354370117188
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 53
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      35,
+      17,
+      0,
+      16,
+      1,
+      "VAE"
+    ],
+    [
+      36,
+      15,
+      0,
+      18,
+      0,
+      "LOTUSUNET"
+    ],
+    [
+      37,
+      16,
+      0,
+      18,
+      1,
+      "LATENT"
+    ],
+    [
+      38,
+      18,
+      0,
+      19,
+      0,
+      "LATENT"
+    ],
+    [
+      39,
+      17,
+      0,
+      19,
+      1,
+      "VAE"
+    ],
+    [
+      41,
+      19,
+      0,
+      14,
+      1,
+      "IMAGE"
+    ],
+    [
+      45,
+      19,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      46,
+      2,
+      0,
+      22,
+      0,
+      "IMAGE"
+    ],
+    [
+      47,
+      22,
+      0,
+      16,
+      0,
+      "IMAGE"
+    ],
+    [
+      48,
+      22,
+      1,
+      21,
+      2,
+      "PANORAMA_VIEWS"
+    ],
+    [
+      49,
+      22,
+      1,
+      14,
+      0,
+      "PANORAMA_VIEWS"
+    ],
+    [
+      51,
+      14,
+      0,
+      21,
+      3,
+      "PANORAMA_NORMALS"
+    ],
+    [
+      52,
+      2,
+      0,
+      21,
+      0,
+      "IMAGE"
+    ],
+    [
+      53,
+      21,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      54,
+      21,
+      1,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      55,
+      21,
+      3,
+      6,
+      1,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7400249944258327,
+      "offset": [
+        -2240.795803726159,
+        -60.756048163975635
+      ]
+    },
+    "frontendVersion": "1.27.10",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
